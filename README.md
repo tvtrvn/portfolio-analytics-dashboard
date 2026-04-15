@@ -24,7 +24,7 @@ This application provides comprehensive portfolio monitoring, performance analyt
 | Charts     | Recharts                                             |
 | Backend    | Python · FastAPI · SQLAlchemy · Pydantic              |
 | Database   | PostgreSQL                                           |
-| Deployment | Vercel (frontend) · Render/Railway (backend)         |
+| Deployment | Vercel (frontend) · Koyeb (backend + PostgreSQL)     |
 
 ## Project Structure
 
@@ -120,31 +120,41 @@ The frontend runs at `http://localhost:5173` and proxies API requests to `http:/
 
 ## Deployment
 
-### Frontend (Vercel)
+### 1. Database (Koyeb Managed PostgreSQL)
 
-1. Connect your GitHub repo to Vercel
-2. Set root directory to `frontend`
-3. Set environment variable: `VITE_API_BASE_URL=https://your-backend-url.com/api`
-4. Deploy
+1. Log in to [Koyeb](https://www.koyeb.com/) and go to **Databases**
+2. Click **Create Database Service**
+3. Choose a region (e.g., `was` for US East or `fra` for EU)
+4. Once provisioned, copy the **connection string** from the database overview page
 
-### Backend (Render / Railway)
+### 2. Backend (Koyeb Web Service)
 
-1. Create a new web service pointing to the `backend` directory
-2. Set start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-3. Set environment variables:
-   - `DATABASE_URL` — your hosted PostgreSQL connection string
-   - `CORS_ORIGINS` — your Vercel frontend URL
-   - `RISK_FREE_RATE` — configurable risk-free rate (default: 0.045)
-4. After deployment, run `python seed.py` to populate the database
+1. In the Koyeb dashboard, click **Create Service** → **Web Service**
+2. Select **GitHub** and connect your `portfolio-analytics-dashboard` repo
+3. Configure the service:
+   - **Builder**: Buildpack
+   - **Work directory**: `backend`
+   - **Run command**: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+   - **Instance type**: Free (Eco)
+4. Add environment variables:
+   - `DATABASE_URL` — the Koyeb PostgreSQL connection string from step 1
+   - `CORS_ORIGINS` — your Vercel frontend URL (e.g., `https://your-app.vercel.app`)
+   - `RISK_FREE_RATE` — `0.045`
+5. Deploy — Koyeb will detect `requirements.txt` and `runtime.txt` automatically
+6. After the service is live, open the Koyeb console and run `python seed.py` to populate the database
 
-### Database (Hosted PostgreSQL)
+### 3. Frontend (Vercel)
 
-Compatible with:
-- Neon
-- Supabase
-- Railway PostgreSQL
-- Render PostgreSQL
-- AWS RDS
+1. Go to [Vercel](https://vercel.com/) and click **Add New Project**
+2. Import your `portfolio-analytics-dashboard` repo from GitHub
+3. Configure the project:
+   - **Root Directory**: `frontend`
+   - **Framework Preset**: Vite (auto-detected)
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+4. Add the environment variable:
+   - `VITE_API_BASE_URL` — your Koyeb backend URL with `/api` suffix (e.g., `https://your-backend-app.koyeb.app/api`)
+5. Deploy
 
 ## Environment Variables
 
