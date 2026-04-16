@@ -194,18 +194,6 @@ The application uses a relational schema with the following tables:
 | Canadian Dividend       | Canadian Dividend | S&P/TSX Composite Index       | ~$100M        |
 | Global Macro            | Global Macro      | MSCI World Index              | ~$200M        |
 
-## Screenshots
-
-> _Screenshots of the running application can be added here._
-
-| Dashboard | Holdings | Performance |
-| --------- | -------- | ----------- |
-| _screenshot_ | _screenshot_ | _screenshot_ |
-
-| Attribution | Risk Metrics |
-| ----------- | ------------ |
-| _screenshot_ | _screenshot_ |
-
 ## Resume Description
 
 **Portfolio Analytics Dashboard** — Designed and built a production-grade, full-stack portfolio analytics platform modeled after internal tools used by institutional asset management teams. The application provides real-time portfolio monitoring, performance analytics (cumulative returns, Sharpe ratio, rolling volatility), risk assessment (VaR, CVaR, max drawdown, beta), and return attribution by security and sector. Built with React/TypeScript/Redux Toolkit on the frontend with Recharts for data visualization, and Python/FastAPI/SQLAlchemy on the backend with a normalized PostgreSQL schema. Features include multi-portfolio support, benchmark-relative analytics, time-period filtering, and CSV data export. Designed with an institutional, desktop-first UI optimized for portfolio managers and research analysts.
