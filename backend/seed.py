@@ -213,7 +213,7 @@ def seed():
     db = SessionLocal()
     try:
         inception = date(2023, 1, 3)
-        end = date(2025, 4, 11)
+        end = date.today()
         trading_days = generate_business_days(inception, end)
         print(f"Generated {len(trading_days)} trading days from {inception} to {end}")
 
