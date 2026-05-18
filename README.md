@@ -2,6 +2,13 @@
 
 > A production-grade, full-stack portfolio analytics platform built for institutional asset management teams. Designed to mirror the tools used by portfolio managers, investment analysts, and risk teams at firms like TD Asset Management.
 
+---
+
+**What's new in v2 — Live Market Data**
+Version 2 replaces simulated GBM prices with live end-of-day closes fetched from Yahoo Finance via `yfinance`. A holdings editor lets you add, edit, and delete portfolios and positions directly from the UI. A GitHub Actions cron job refreshes prices every night at 23:00 UTC, and a keepalive workflow pings the backend every 10 minutes to prevent cold starts.
+
+---
+
 ## Overview
 
 This application provides comprehensive portfolio monitoring, performance analytics, risk assessment, and attribution analysis through a professional, institutional-quality dashboard interface.
@@ -15,6 +22,8 @@ This application provides comprehensive portfolio monitoring, performance analyt
 - **Risk Metrics** — Annualized volatility, Sharpe ratio, VaR/CVaR, beta, tracking error, information ratio, rolling volatility charts
 - **Multi-Portfolio Support** — Growth Equity, Balanced Income, Canadian Dividend, and Global Macro portfolios
 - **Time Period Filters** — 1M, 3M, 6M, YTD, 1Y, Since Inception
+- **Live Daily Prices** — End-of-day closes fetched from Yahoo Finance (`yfinance`); prices refresh nightly via a GitHub Actions cron job
+- **Holdings Editor** — Add, edit, and delete portfolios and individual stock positions directly from the UI
 
 ## Tech Stack
 
@@ -72,6 +81,17 @@ portfolio-analytics-dashboard-app/
 | GET    | `/api/portfolios/{id}/benchmark-comparison` | Portfolio vs benchmark analytics     |
 | GET    | `/api/portfolios/{id}/risk-metrics`         | Risk metrics with rolling vol/dd     |
 | GET    | `/api/health`                               | Health check                         |
+| GET    | `/api/health/keepalive`                     | Liveness check + last refresh time  |
+| POST   | `/api/portfolios`                           | Create a new portfolio               |
+| PUT    | `/api/portfolios/{id}`                      | Update portfolio metadata            |
+| DELETE | `/api/portfolios/{id}`                      | Delete a portfolio                   |
+| GET    | `/api/securities`                           | List all known securities            |
+| GET    | `/api/securities/lookup?ticker=`            | Look up a ticker via yfinance        |
+| POST   | `/api/securities`                           | Add a new security                   |
+| POST   | `/api/portfolios/{id}/holdings`             | Add a holding to a portfolio         |
+| PUT    | `/api/portfolios/{id}/holdings/{security_id}` | Update a holding's quantity/weight |
+| DELETE | `/api/portfolios/{id}/holdings/{security_id}` | Remove a holding                   |
+| POST   | `/api/admin/refresh-prices`                 | Trigger a price refresh (requires `X-Refresh-Token` header) |
 
 All analytics endpoints accept optional query parameters: `period` (1M, 3M, 6M, YTD, 1Y, SI), `start_date`, `end_date`.
 
@@ -101,7 +121,7 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env with your DATABASE_URL
 
-# Create tables and seed data
+# Create tables and seed demo data (first run only)
 python seed.py
 
 # Start the API server
@@ -117,6 +137,20 @@ npm run dev
 ```
 
 The frontend runs at `http://localhost:5173` and proxies API requests to `http://localhost:8000`.
+
+### 4. Refresh Prices Manually (optional)
+
+After seeding, you can pull live closes from Yahoo Finance for all securities:
+
+```bash
+cd backend
+python refresh_prices.py
+# Optional flags:
+# --portfolio-id N   refresh only portfolio N
+# --backfill-days N  how many calendar days of history to backfill (default: 365)
+```
+
+`REFRESH_TOKEN` must be set in your `.env` file before running the script.
 
 ## Deployment
 
@@ -140,8 +174,23 @@ The frontend runs at `http://localhost:5173` and proxies API requests to `http:/
    - `DATABASE_URL` — the Koyeb PostgreSQL connection string from step 1
    - `CORS_ORIGINS` — your Vercel frontend URL (e.g., `https://your-app.vercel.app`)
    - `RISK_FREE_RATE` — `0.045`
+   - `REFRESH_TOKEN` — a secret string used to authorize the `/api/admin/refresh-prices` endpoint
+   - `MARKET_DATA_PROVIDER` — `yfinance` (default)
+   - `BACKFILL_DAYS` — `365` (default)
 5. Deploy — Koyeb will detect `requirements.txt` and `runtime.txt` automatically
 6. After the service is live, open the Koyeb console and run `python seed.py` to populate the database
+
+### 4. GitHub Actions — Live Data Automation
+
+Two workflows automate price updates and backend keepalive. Add the following secrets to your GitHub repository (**Settings → Secrets and variables → Actions**):
+
+| Secret | Value |
+| ------ | ----- |
+| `BACKEND_URL` | Your Koyeb backend URL, e.g. `https://your-backend-app.koyeb.app` |
+| `REFRESH_TOKEN` | The same token set in the Koyeb environment variables |
+
+- **`refresh-prices.yml`** — Runs at `0 23 * * *` UTC every night. Posts to `/api/admin/refresh-prices` to fetch new end-of-day closes.
+- **`keepalive.yml`** — Runs every 10 minutes (`*/10 * * * *`). Gets `/api/health/keepalive` to prevent Koyeb cold starts.
 
 ### 3. Frontend (Vercel)
 
@@ -164,6 +213,9 @@ The frontend runs at `http://localhost:5173` and proxies API requests to `http:/
 DATABASE_URL=postgresql://user:pass@host:5432/portfolio_analytics
 CORS_ORIGINS=http://localhost:5173
 RISK_FREE_RATE=0.045
+REFRESH_TOKEN=your-secret-token-here
+MARKET_DATA_PROVIDER=yfinance
+BACKFILL_DAYS=365
 ```
 
 ### Frontend (`.env`)

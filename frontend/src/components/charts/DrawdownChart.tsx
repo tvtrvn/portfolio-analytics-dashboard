@@ -9,6 +9,20 @@ interface DrawdownChartProps {
   title?: string;
 }
 
+function CustomTooltip({ active, payload, label }: any) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="rounded-clay border border-clay-border bg-clay-surface p-3 text-sm shadow-clay-lg">
+      <p className="mb-1 text-xs text-clay-muted">{formatDateShort(label)}</p>
+      {payload.map((p: any) => (
+        <p key={p.dataKey} className="font-mono font-semibold text-clay-ink">
+          {p.name}: {p.value !== null ? `${Number(p.value).toFixed(2)}%` : '—'}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 export function DrawdownChart({ data, title = 'Drawdown Analysis' }: DrawdownChartProps) {
   const chartData = data.map((d) => ({
     date: d.date,
@@ -17,57 +31,56 @@ export function DrawdownChart({ data, title = 'Drawdown Analysis' }: DrawdownCha
   }));
 
   return (
-    <div className="card">
-      <div className="card-header">
-        <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+    <div className="clay-card">
+      <div className="border-b border-clay-border px-5 py-3">
+        <h3 className="font-semibold text-clay-ink">{title}</h3>
       </div>
-      <div className="card-body">
+      <div className="p-5">
         <ResponsiveContainer width="100%" height={280}>
           <AreaChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+            <defs>
+              <linearGradient id="ddGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#F08A7E" stopOpacity={0.35} />
+                <stop offset="100%" stopColor="#F08A7E" stopOpacity={0} />
+              </linearGradient>
+              <linearGradient id="ddBenchGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#9C9388" stopOpacity={0.2} />
+                <stop offset="100%" stopColor="#9C9388" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#E8E0D2" />
             <XAxis
               dataKey="date"
               tickFormatter={formatDateShort}
-              tick={{ fontSize: 11, fill: '#94a3b8' }}
-              axisLine={{ stroke: '#e2e8f0' }}
+              tick={{ fontSize: 11, fill: '#9C9388' }}
+              axisLine={false}
               tickLine={false}
               interval="preserveStartEnd"
             />
             <YAxis
               tickFormatter={(v) => `${v.toFixed(1)}%`}
-              tick={{ fontSize: 11, fill: '#94a3b8' }}
+              tick={{ fontSize: 11, fill: '#9C9388' }}
               axisLine={false}
               tickLine={false}
               width={55}
             />
-            <ReferenceLine y={0} stroke="#cbd5e1" />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: '#fff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                fontSize: '12px',
-              }}
-              formatter={(value: number) => [`${value.toFixed(2)}%`, '']}
-              labelFormatter={(label) => formatDateShort(label as string)}
-            />
+            <ReferenceLine y={0} stroke="#E8E0D2" />
+            <Tooltip content={<CustomTooltip />} />
             <Legend verticalAlign="top" height={36} iconType="line" wrapperStyle={{ fontSize: '12px' }} />
             <Area
               type="monotone"
               dataKey="drawdown"
               name="Portfolio Drawdown"
-              stroke="#dc2626"
-              fill="#fecaca"
-              fillOpacity={0.3}
-              strokeWidth={1.5}
+              stroke="#F08A7E"
+              fill="url(#ddGrad)"
+              strokeWidth={2}
             />
             <Area
               type="monotone"
               dataKey="benchmark"
               name="Benchmark Drawdown"
-              stroke="#94a3b8"
-              fill="#e2e8f0"
-              fillOpacity={0.2}
+              stroke="#9C9388"
+              fill="url(#ddBenchGrad)"
               strokeWidth={1}
               strokeDasharray="3 3"
             />

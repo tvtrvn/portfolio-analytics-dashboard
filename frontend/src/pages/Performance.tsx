@@ -6,6 +6,7 @@ import {
   fetchRiskMetrics,
 } from '../store/slices/analyticsSlice';
 import { KPICard } from '../components/common/KPICard';
+import { Term } from '../components/common/Term';
 import { SkeletonCard, SkeletonChart } from '../components/common/LoadingSpinner';
 import { ErrorState } from '../components/common/ErrorState';
 import { PerformanceChart } from '../components/charts/PerformanceChart';
@@ -29,85 +30,101 @@ export function Performance() {
 
   return (
     <div className="space-y-6">
+      {/* Page header */}
       <div>
-        <h1 className="text-lg font-semibold text-gray-900">Performance Analytics</h1>
-        <p className="text-xs text-gray-500">
+        <h1 className="text-2xl font-bold text-clay-ink">Performance Analytics</h1>
+        <p className="text-clay-muted">
           {performance
             ? `${performance.start_date} to ${performance.end_date} · Period: ${performance.period.toUpperCase()}`
             : 'Loading...'}
         </p>
       </div>
 
+      {/* KPI row — 6 cards */}
       {loading.performance ? (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+          {Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)}
         </div>
-      ) : performance ? (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <KPICard
-            label="Cumulative Return"
-            value={formatPercent(performance.cumulative_return)}
-            change={performance.cumulative_return}
-          />
-          <KPICard
-            label="Annualized Return"
-            value={formatPercent(performance.annualized_return)}
-            change={performance.annualized_return}
-          />
-          {performance.benchmark_cumulative_return !== null && (
-            <KPICard
-              label="Benchmark Return"
-              value={formatPercent(performance.benchmark_cumulative_return)}
-              change={performance.benchmark_cumulative_return}
-            />
+      ) : (
+        <div className="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
+          {performance && (
+            <>
+              <KPICard
+                label={<Term termKey="cumulativeReturn">Cumulative Return</Term> as unknown as string}
+                value={formatPercent(performance.cumulative_return)}
+                change={performance.cumulative_return}
+              />
+              <KPICard
+                label={<Term termKey="annualizedReturn">Annualized Return</Term> as unknown as string}
+                value={formatPercent(performance.annualized_return)}
+                change={performance.annualized_return}
+              />
+              {performance.benchmark_cumulative_return !== null && (
+                <KPICard
+                  label={<Term termKey="benchmark">Benchmark Return</Term> as unknown as string}
+                  value={formatPercent(performance.benchmark_cumulative_return)}
+                  change={performance.benchmark_cumulative_return}
+                />
+              )}
+              {performance.excess_return !== null && (
+                <KPICard
+                  label={<Term termKey="excessReturn">Excess Return</Term> as unknown as string}
+                  value={formatPercent(performance.excess_return)}
+                  change={performance.excess_return}
+                  changeLabel="vs benchmark"
+                />
+              )}
+            </>
           )}
-          {performance.excess_return !== null && (
-            <KPICard
-              label="Excess Return"
-              value={formatPercent(performance.excess_return)}
-              change={performance.excess_return}
-              changeLabel="vs benchmark"
-            />
+          {benchmarkComparison && (
+            <>
+              <KPICard
+                label={<Term termKey="trackingError">Tracking Error</Term> as unknown as string}
+                value={formatPercent(benchmarkComparison.tracking_error)}
+                subValue="annualized"
+              />
+              <KPICard
+                label={<Term termKey="informationRatio">Information Ratio</Term> as unknown as string}
+                value={benchmarkComparison.information_ratio.toFixed(2)}
+                subValue="risk-adjusted alpha"
+              />
+            </>
           )}
-        </div>
-      ) : null}
-
-      {benchmarkComparison && (
-        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <KPICard
-            label="Tracking Error"
-            value={formatPercent(benchmarkComparison.tracking_error)}
-            subValue="annualized"
-          />
-          <KPICard
-            label="Information Ratio"
-            value={benchmarkComparison.information_ratio.toFixed(2)}
-            subValue="risk-adjusted alpha"
-          />
-          <KPICard
-            label="Portfolio Cumulative"
-            value={formatPercent(benchmarkComparison.portfolio_cumulative)}
-            change={benchmarkComparison.portfolio_cumulative}
-          />
-          <KPICard
-            label="Benchmark Cumulative"
-            value={formatPercent(benchmarkComparison.benchmark_cumulative)}
-            change={benchmarkComparison.benchmark_cumulative}
-          />
         </div>
       )}
 
+      {/* Performance vs Benchmark chart
+          PerformanceChart renders its own clay-card with a conditional title header.
+          We pass title="" so the chart's internal header is suppressed (it uses {title && …}),
+          and render our Term-labelled legend row above the card instead. */}
       {loading.performance ? (
         <SkeletonChart />
       ) : performance ? (
-        <PerformanceChart
-          data={performance.series}
-          title="Portfolio vs Benchmark Performance"
-          showBenchmark
-          showExcess
-        />
+        <div>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-3 px-1">
+            <h2 className="text-base font-semibold text-clay-ink">
+              Performance vs <Term termKey="benchmark">Benchmark</Term>
+            </h2>
+            <div className="flex items-center gap-2">
+              <span className="clay-pill-sky">Portfolio</span>
+              <span className="clay-pill-mint">Benchmark</span>
+              <span className="clay-pill-honey">Excess</span>
+            </div>
+          </div>
+          <PerformanceChart
+            data={performance.series}
+            title=""
+            showBenchmark
+            showExcess
+          />
+        </div>
       ) : null}
 
+      {/* Rolling Volatility + Drawdown side-by-side.
+          VolatilityChart and DrawdownChart unconditionally render their title header,
+          so we pass real strings and use Term-labelled spans within the visible chart titles
+          by leveraging the chart's own title prop for the literal text. Term context is
+          provided via the section label rendered above each chart card. */}
       <div className="grid gap-6 lg:grid-cols-2">
         {loading.riskMetrics ? (
           <>
@@ -116,14 +133,24 @@ export function Performance() {
           </>
         ) : riskMetrics ? (
           <>
-            <VolatilityChart
-              data={riskMetrics.rolling_volatility}
-              title="Rolling Volatility (30-Day & 90-Day)"
-            />
-            <DrawdownChart
-              data={riskMetrics.drawdown_series}
-              title="Drawdown Analysis"
-            />
+            <div>
+              <p className="mb-1 px-1 text-xs font-semibold uppercase tracking-wider text-clay-muted">
+                <Term termKey="rollingVolatility">Rolling Volatility</Term>
+              </p>
+              <VolatilityChart
+                data={riskMetrics.rolling_volatility}
+                title="Rolling Volatility (30-Day & 90-Day)"
+              />
+            </div>
+            <div>
+              <p className="mb-1 px-1 text-xs font-semibold uppercase tracking-wider text-clay-muted">
+                <Term termKey="drawdown">Drawdown</Term> Analysis
+              </p>
+              <DrawdownChart
+                data={riskMetrics.drawdown_series}
+                title="Drawdown Analysis"
+              />
+            </div>
           </>
         ) : null}
       </div>

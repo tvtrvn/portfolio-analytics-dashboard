@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/store';
 import { fetchAttribution } from '../store/slices/analyticsSlice';
 import { KPICard } from '../components/common/KPICard';
+import { Term } from '../components/common/Term';
 import { SkeletonCard, SkeletonChart } from '../components/common/LoadingSpinner';
 import { ErrorState } from '../components/common/ErrorState';
 import { ContributionChart } from '../components/charts/ContributionChart';
@@ -26,7 +27,7 @@ export function Attribution() {
       key: 'ticker',
       header: 'Ticker',
       accessor: (r) => r.ticker,
-      render: (r) => <span className="font-mono text-xs font-semibold text-gray-900">{r.ticker}</span>,
+      render: (r) => <span className="font-mono text-xs font-semibold text-clay-ink">{r.ticker}</span>,
     },
     { key: 'name', header: 'Security', accessor: (r) => r.name },
     {
@@ -34,7 +35,7 @@ export function Attribution() {
       header: 'Sector',
       accessor: (r) => r.sector,
       render: (r) => (
-        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{r.sector}</span>
+        <span className="clay-pill">{r.sector}</span>
       ),
     },
     {
@@ -62,11 +63,11 @@ export function Attribution() {
       key: 'sector',
       header: 'Sector',
       accessor: (r) => r.sector,
-      render: (r) => <span className="font-medium text-gray-900">{r.sector}</span>,
+      render: (r) => <span className="font-medium text-clay-ink">{r.sector}</span>,
     },
     {
       key: 'portfolio_weight',
-      header: 'Portfolio Weight',
+      header: 'Weight',
       accessor: (r) => r.portfolio_weight,
       align: 'right',
       render: (r) => formatPercent(r.portfolio_weight),
@@ -86,15 +87,17 @@ export function Attribution() {
 
   return (
     <div className="space-y-6">
+      {/* Page header */}
       <div>
-        <h1 className="text-lg font-semibold text-gray-900">Attribution Analysis</h1>
-        <p className="text-xs text-gray-500">
+        <h1 className="text-2xl font-bold text-clay-ink">Attribution Analysis</h1>
+        <p className="text-clay-muted">
           {attribution
             ? `${attribution.start_date} to ${attribution.end_date} · Period: ${attribution.period.toUpperCase()}`
             : 'Loading...'}
         </p>
       </div>
 
+      {/* Top KPI row — 3 cards */}
       {loading.attribution ? (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
           {Array.from({ length: 3 }).map((_, i) => <SkeletonCard key={i} />)}
@@ -102,20 +105,20 @@ export function Attribution() {
       ) : attribution ? (
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
           <KPICard
-            label="Total Portfolio Return"
+            label={<Term termKey="cumulativeReturn">Total Portfolio Return</Term> as unknown as string}
             value={formatPercent(attribution.total_return)}
             change={attribution.total_return}
           />
           {attribution.benchmark_return !== null && (
             <KPICard
-              label="Benchmark Return"
+              label={<Term termKey="benchmark">Benchmark Return</Term> as unknown as string}
               value={formatPercent(attribution.benchmark_return)}
               change={attribution.benchmark_return}
             />
           )}
           {attribution.excess_return !== null && (
             <KPICard
-              label="Excess Return"
+              label={<Term termKey="excessReturn">Excess Return</Term> as unknown as string}
               value={formatPercent(attribution.excess_return)}
               change={attribution.excess_return}
               changeLabel="active"
@@ -124,6 +127,10 @@ export function Attribution() {
         </div>
       ) : null}
 
+      {/* Top / Bottom contributors side-by-side.
+          ContributionChart renders its own clay-card with an unconditional title header.
+          We use the chart's title prop for the literal text and add a Term-labelled
+          section indicator above each card for tooltip accessibility. */}
       <div className="grid gap-6 lg:grid-cols-2">
         {loading.attribution ? (
           <>
@@ -132,34 +139,51 @@ export function Attribution() {
           </>
         ) : attribution ? (
           <>
-            <ContributionChart
-              data={attribution.best_contributors.map((c) => ({
-                name: c.ticker,
-                value: c.return_contribution,
-              }))}
-              title="Top Contributors"
-            />
-            <ContributionChart
-              data={attribution.worst_contributors.map((c) => ({
-                name: c.ticker,
-                value: c.return_contribution,
-              }))}
-              title="Bottom Contributors"
-            />
+            <div>
+              <p className="mb-1 px-1 text-xs font-semibold uppercase tracking-wider text-clay-muted">
+                <Term termKey="topContributor">Top Contributors</Term>
+              </p>
+              <ContributionChart
+                data={attribution.best_contributors.map((c) => ({
+                  name: c.ticker,
+                  value: c.return_contribution,
+                }))}
+                title="Top Contributors"
+              />
+            </div>
+            <div>
+              <p className="mb-1 px-1 text-xs font-semibold uppercase tracking-wider text-clay-muted">
+                <Term termKey="bottomContributor">Bottom Contributors</Term>
+              </p>
+              <ContributionChart
+                data={attribution.worst_contributors.map((c) => ({
+                  name: c.ticker,
+                  value: c.return_contribution,
+                }))}
+                title="Bottom Contributors"
+              />
+            </div>
           </>
         ) : null}
       </div>
 
+      {/* Contribution by Sector chart */}
       {attribution && (
-        <ContributionChart
-          data={attribution.by_sector.map((s) => ({
-            name: s.sector,
-            value: s.portfolio_contribution,
-          }))}
-          title="Contribution by Sector"
-        />
+        <div>
+          <p className="mb-1 px-1 text-xs font-semibold uppercase tracking-wider text-clay-muted">
+            <Term termKey="sectorAttribution">Contribution by Sector</Term>
+          </p>
+          <ContributionChart
+            data={attribution.by_sector.map((s) => ({
+              name: s.sector,
+              value: s.portfolio_contribution,
+            }))}
+            title="Contribution by Sector"
+          />
+        </div>
       )}
 
+      {/* Sector attribution table — DataTable renders its own clay-card with export button */}
       {attribution && (
         <DataTable<SectorAttribution>
           columns={sectorColumns}
@@ -169,6 +193,7 @@ export function Attribution() {
         />
       )}
 
+      {/* Security-level attribution table */}
       {attribution && (
         <DataTable<SecurityAttribution>
           columns={securityColumns}

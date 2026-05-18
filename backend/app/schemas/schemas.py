@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from datetime import date
 from typing import Optional
 
@@ -12,8 +12,114 @@ class PortfolioBase(BaseModel):
     description: Optional[str] = None
     benchmark_name: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PortfolioCreate(BaseModel):
+    name: str
+    strategy: str
+    benchmark_id: Optional[int] = None
+    inception_date: date
+    currency: str = "CAD"
+    description: Optional[str] = None
+
+
+class PortfolioUpdate(BaseModel):
+    name: Optional[str] = None
+    strategy: Optional[str] = None
+    benchmark_id: Optional[int] = None
+    inception_date: Optional[date] = None
+    currency: Optional[str] = None
+    description: Optional[str] = None
+
+
+class PortfolioRead(BaseModel):
+    id: int
+    name: str
+    strategy: str
+    currency: str
+    inception_date: date
+    description: Optional[str] = None
+    benchmark_id: Optional[int] = None
+    benchmark_name: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SecurityCreate(BaseModel):
+    ticker: str
+    name: Optional[str] = None
+    sector: Optional[str] = None
+    asset_class: Optional[str] = None
+    currency: Optional[str] = None
+    exchange: Optional[str] = None
+
+
+class SecurityRead(BaseModel):
+    id: int
+    ticker: str
+    name: str
+    sector: str
+    asset_class: str
+    currency: str
+    exchange: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SecurityMetadata(BaseModel):
+    ticker: str
+    name: Optional[str] = None
+    sector: Optional[str] = None
+    asset_class: Optional[str] = None
+    currency: Optional[str] = None
+    exchange: Optional[str] = None
+
+
+class HoldingCreate(BaseModel):
+    ticker: str
+    quantity: float
+    cost_basis: Optional[float] = 0.0
+    target_weight: Optional[float] = 0.0
+
+
+class HoldingUpdate(BaseModel):
+    quantity: Optional[float] = None
+    cost_basis: Optional[float] = None
+    target_weight: Optional[float] = None
+
+
+class HoldingRead(BaseModel):
+    id: int
+    portfolio_id: int
+    security_id: int
+    date: date
+    quantity: float
+    market_value: float
+    weight: float
+    target_weight: Optional[float] = None
+    cost_basis: Optional[float] = None
+    ticker: Optional[str] = None
+    name: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RefreshRequest(BaseModel):
+    portfolio_id: Optional[int] = None
+
+
+class RefreshResult(BaseModel):
+    updated_securities: int
+    updated_returns_through: Optional[date] = None
+    skipped: int
+    errors: list[str]
+
+
+class KeepaliveResponse(BaseModel):
+    ok: bool
+    db: str
+    last_refresh: Optional[str] = None
 
 
 class PortfolioSummary(BaseModel):
@@ -32,6 +138,8 @@ class PortfolioSummary(BaseModel):
 
 
 class HoldingItem(BaseModel):
+    id: Optional[int] = None
+    security_id: Optional[int] = None
     ticker: str
     name: str
     sector: str

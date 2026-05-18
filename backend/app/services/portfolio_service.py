@@ -1,7 +1,7 @@
 from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc
+from sqlalchemy import func, desc, delete
 
 from app.models import (
     Portfolio, Benchmark, Security, Holding,
@@ -15,6 +15,9 @@ from app.schemas.schemas import (
     SecurityAttribution, SectorAttribution, AttributionResponse,
     BenchmarkComparisonResponse,
     RollingVolatilityPoint, DrawdownPoint, RiskMetricsResponse,
+    PortfolioCreate, PortfolioUpdate, PortfolioRead,
+    SecurityCreate, SecurityRead,
+    HoldingCreate, HoldingUpdate, HoldingRead,
 )
 from app.services import analytics
 from app.config import get_settings
@@ -128,6 +131,8 @@ def get_portfolio_summary(
 
     top_positions = [
         HoldingItem(
+            id=h.id,
+            security_id=h.security_id,
             ticker=h.security.ticker,
             name=h.security.name,
             sector=h.security.sector,
@@ -211,6 +216,8 @@ def get_holdings(
         if h.target_weight is not None:
             drift = float(h.weight) - float(h.target_weight)
         items.append(HoldingItem(
+            id=h.id,
+            security_id=h.security_id,
             ticker=h.security.ticker,
             name=h.security.name,
             sector=h.security.sector,
@@ -663,4 +670,300 @@ def get_risk_metrics(
         information_ratio=ir,
         rolling_volatility=rolling_vol,
         drawdown_series=dd_points,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Portfolio CRUD helpers
+# ---------------------------------------------------------------------------
+
+def create_portfolio(db: Session, payload: PortfolioCreate) -> PortfolioRead:
+    portfolio = Portfolio(
+        name=payload.name,
+        strategy=payload.strategy,
+        benchmark_id=payload.benchmark_id,
+        inception_date=payload.inception_date,
+        currency=payload.currency,
+        description=payload.description,
+    )
+    db.add(portfolio)
+    db.commit()
+    db.refresh(portfolio)
+    return _portfolio_to_read(db, portfolio)
+
+
+def update_portfolio(db: Session, portfolio_id: int, payload: PortfolioUpdate) -> PortfolioRead:
+    portfolio = db.query(Portfolio).filter(Portfolio.id == portfolio_id).first()
+    if not portfolio:
+        raise ValueError(f"Portfolio {portfolio_id} not found")
+    update_data = payload.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(portfolio, field, value)
+    db.commit()
+    db.refresh(portfolio)
+    return _portfolio_to_read(db, portfolio)
+
+
+def delete_portfolio(db: Session, portfolio_id: int) -> None:
+    portfolio = db.query(Portfolio).filter(Portfolio.id == portfolio_id).first()
+    if not portfolio:
+        raise ValueError(f"Portfolio {portfolio_id} not found")
+    # Delete dependent rows manually (no cascade set on model)
+    db.execute(delete(Holding).where(Holding.portfolio_id == portfolio_id))
+    db.execute(delete(PortfolioReturn).where(PortfolioReturn.portfolio_id == portfolio_id))
+    db.delete(portfolio)
+    db.commit()
+
+
+def _portfolio_to_read(db: Session, portfolio: Portfolio) -> PortfolioRead:
+    benchmark_name = None
+    if portfolio.benchmark_id:
+        bm = db.query(Benchmark).filter(Benchmark.id == portfolio.benchmark_id).first()
+        benchmark_name = bm.name if bm else None
+    return PortfolioRead(
+        id=portfolio.id,
+        name=portfolio.name,
+        strategy=portfolio.strategy,
+        currency=portfolio.currency,
+        inception_date=portfolio.inception_date,
+        description=portfolio.description,
+        benchmark_id=portfolio.benchmark_id,
+        benchmark_name=benchmark_name,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Security helpers
+# ---------------------------------------------------------------------------
+
+def get_or_create_security(db: Session, ticker: str) -> Security:
+    """Return existing security row for ticker (case-insensitive), or create one."""
+    ticker_upper = ticker.upper()
+    sec = db.query(Security).filter(Security.ticker.ilike(ticker_upper)).first()
+    return sec
+
+
+def upsert_security_for_ticker(
+    db: Session,
+    payload: SecurityCreate,
+    *,
+    lookup_fn=None,
+    refresh_fn=None,
+) -> tuple[Security, bool]:
+    """
+    Return (security, created).
+    If security already exists → return it (created=False).
+    Otherwise: fill missing fields via lookup_fn, insert, optionally call refresh_fn.
+    lookup_fn: callable(ticker) -> dict | None
+    refresh_fn: callable(db, security_id) -> None
+    """
+    ticker_upper = payload.ticker.upper()
+    existing = db.query(Security).filter(Security.ticker.ilike(ticker_upper)).first()
+    if existing:
+        return existing, False
+
+    # Try to fill missing metadata via lookup
+    meta: dict = {}
+    if lookup_fn is not None:
+        meta = lookup_fn(ticker_upper) or {}
+
+    sec = Security(
+        ticker=ticker_upper,
+        name=payload.name or meta.get("name") or ticker_upper,
+        sector=payload.sector or meta.get("sector") or "Unknown",
+        asset_class=payload.asset_class or meta.get("asset_class") or "Equity",
+        currency=payload.currency or meta.get("currency") or "CAD",
+        exchange=payload.exchange or meta.get("exchange"),
+    )
+    db.add(sec)
+    db.commit()
+    db.refresh(sec)
+
+    if refresh_fn is not None:
+        try:
+            refresh_fn(db, sec.id)
+        except Exception:
+            pass  # price backfill failure should not abort security creation
+
+    return sec, True
+
+
+# ---------------------------------------------------------------------------
+# Holdings CRUD helpers
+# ---------------------------------------------------------------------------
+
+def recompute_holding_weights(db: Session, portfolio_id: int, on_date: date) -> None:
+    """Recompute weight = market_value / sum(market_value) for all holdings on date."""
+    holdings = (
+        db.query(Holding)
+        .filter(Holding.portfolio_id == portfolio_id, Holding.date == on_date)
+        .all()
+    )
+    total_mv = sum(float(h.market_value) for h in holdings)
+    for h in holdings:
+        if total_mv > 0:
+            h.weight = float(h.market_value) / total_mv
+        else:
+            h.weight = 0.0
+    db.commit()
+
+
+def add_holding(
+    db: Session,
+    portfolio_id: int,
+    payload: HoldingCreate,
+    *,
+    fetch_latest_close_fn=None,
+    lookup_fn=None,
+    refresh_fn=None,
+) -> HoldingRead:
+    portfolio = db.query(Portfolio).filter(Portfolio.id == portfolio_id).first()
+    if not portfolio:
+        raise ValueError(f"Portfolio {portfolio_id} not found")
+
+    # Resolve security
+    ticker_upper = payload.ticker.upper()
+    sec = db.query(Security).filter(Security.ticker.ilike(ticker_upper)).first()
+    if sec is None:
+        sec, _ = upsert_security_for_ticker(
+            db,
+            SecurityCreate(ticker=ticker_upper),
+            lookup_fn=lookup_fn,
+            refresh_fn=refresh_fn,
+        )
+
+    # Determine market value from latest close
+    latest_close = 0.0
+    if fetch_latest_close_fn is not None:
+        result = fetch_latest_close_fn(ticker_upper)
+        if result is not None:
+            _, latest_close = result
+    if latest_close == 0.0:
+        # Fallback: look up most recent price in DB
+        price_row = (
+            db.query(Price)
+            .filter(Price.security_id == sec.id)
+            .order_by(desc(Price.date))
+            .first()
+        )
+        if price_row:
+            latest_close = float(price_row.close_price)
+
+    market_value = payload.quantity * latest_close
+    today = date.today()
+
+    holding = Holding(
+        portfolio_id=portfolio_id,
+        security_id=sec.id,
+        date=today,
+        quantity=payload.quantity,
+        market_value=market_value,
+        weight=0.0,  # will be recomputed below
+        target_weight=payload.target_weight or 0.0,
+        cost_basis=payload.cost_basis or 0.0,
+    )
+    db.add(holding)
+    db.commit()
+    db.refresh(holding)
+
+    recompute_holding_weights(db, portfolio_id, today)
+    db.refresh(holding)
+
+    return _holding_to_read(holding, sec)
+
+
+def update_holding(
+    db: Session,
+    portfolio_id: int,
+    security_id: int,
+    payload: HoldingUpdate,
+    *,
+    fetch_latest_close_fn=None,
+) -> HoldingRead:
+    portfolio = db.query(Portfolio).filter(Portfolio.id == portfolio_id).first()
+    if not portfolio:
+        raise ValueError(f"Portfolio {portfolio_id} not found")
+
+    # Find most recent holding row
+    holding = (
+        db.query(Holding)
+        .filter(Holding.portfolio_id == portfolio_id, Holding.security_id == security_id)
+        .order_by(desc(Holding.date))
+        .first()
+    )
+    if not holding:
+        raise ValueError(f"Holding for security {security_id} not found in portfolio {portfolio_id}")
+
+    sec = db.query(Security).filter(Security.id == security_id).first()
+
+    update_data = payload.model_dump(exclude_unset=True)
+    if "quantity" in update_data:
+        holding.quantity = update_data["quantity"]
+        # Recompute market value
+        latest_close = 0.0
+        if fetch_latest_close_fn is not None and sec:
+            result = fetch_latest_close_fn(sec.ticker)
+            if result is not None:
+                _, latest_close = result
+        if latest_close == 0.0:
+            price_row = (
+                db.query(Price)
+                .filter(Price.security_id == security_id)
+                .order_by(desc(Price.date))
+                .first()
+            )
+            if price_row:
+                latest_close = float(price_row.close_price)
+        holding.market_value = float(update_data["quantity"]) * latest_close
+
+    if "cost_basis" in update_data:
+        holding.cost_basis = update_data["cost_basis"]
+    if "target_weight" in update_data:
+        holding.target_weight = update_data["target_weight"]
+
+    db.commit()
+    db.refresh(holding)
+
+    recompute_holding_weights(db, portfolio_id, holding.date)
+    db.refresh(holding)
+
+    return _holding_to_read(holding, sec)
+
+
+def delete_holding(db: Session, portfolio_id: int, security_id: int) -> None:
+    portfolio = db.query(Portfolio).filter(Portfolio.id == portfolio_id).first()
+    if not portfolio:
+        raise ValueError(f"Portfolio {portfolio_id} not found")
+
+    # Remove the most recent holding row only (preserves history)
+    holding = (
+        db.query(Holding)
+        .filter(Holding.portfolio_id == portfolio_id, Holding.security_id == security_id)
+        .order_by(desc(Holding.date))
+        .first()
+    )
+    if not holding:
+        raise ValueError(f"Holding for security {security_id} not found in portfolio {portfolio_id}")
+
+    on_date = holding.date
+    db.delete(holding)
+    db.commit()
+
+    # Recompute weights for remaining holdings on that date
+    recompute_holding_weights(db, portfolio_id, on_date)
+
+
+def _holding_to_read(holding: Holding, sec: Security | None) -> HoldingRead:
+    return HoldingRead(
+        id=holding.id,
+        portfolio_id=holding.portfolio_id,
+        security_id=holding.security_id,
+        date=holding.date,
+        quantity=float(holding.quantity),
+        market_value=float(holding.market_value),
+        weight=float(holding.weight),
+        target_weight=float(holding.target_weight) if holding.target_weight is not None else None,
+        cost_basis=float(holding.cost_basis) if holding.cost_basis is not None else None,
+        ticker=sec.ticker if sec else None,
+        name=sec.name if sec else None,
     )

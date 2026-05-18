@@ -1,0 +1,30 @@
+# Backend Keepalive Workflow
+#
+# Purpose: Pings the backend's /api/health/keepalive endpoint every 10 minutes
+# to prevent the free-tier Koyeb dyno from idling and sleeping.
+#
+# Required Secrets:
+#   - BACKEND_URL: Base URL of the backend (e.g., https://your-app.koyeb.app)
+#
+# Setup: Go to GitHub repo Settings → Secrets and variables → Actions → New repository secret
+# and add BACKEND_URL.
+#
+# Note: For private repos, Actions minutes consume ~4320/month at this 10-minute interval
+# (144 runs/day × 30 days). Consider using '*/15 * * * *' or slower for cost control.
+
+name: Backend Keepalive
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # every 10 minutes
+  workflow_dispatch:         # manual trigger in GitHub UI
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping keepalive endpoint
+        run: |
+          curl -sS "${{ secrets.BACKEND_URL }}/api/health/keepalive" \
+            --connect-timeout 30 \
+            --max-time 60 \
+            --fail-with-body -w "\nHTTP %{http_code}\n"

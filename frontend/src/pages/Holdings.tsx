@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Search, Filter } from 'lucide-react';
+import { Search, Download, Plus, Pencil, Trash2 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store/store';
-import { fetchHoldings } from '../store/slices/holdingsSlice';
+import { fetchHoldings, deleteHolding } from '../store/slices/holdingsSlice';
 import { DataTable, type Column } from '../components/common/DataTable';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorState } from '../components/common/ErrorState';
 import { EmptyState } from '../components/common/EmptyState';
-import { formatCurrency, formatPercent, signColor, formatCurrencyCompact } from '../utils/format';
+import { Term } from '../components/common/Term';
+import { HoldingFormModal } from '../components/modals/HoldingFormModal';
+import { ConfirmDialog } from '../components/modals/ConfirmDialog';
+import { formatCurrency, formatPercent, formatCurrencyCompact } from '../utils/format';
+import { downloadCsv } from '../utils/csv';
 import type { HoldingItem } from '../types';
 
 export function Holdings() {
@@ -17,6 +21,11 @@ export function Holdings() {
   const [search, setSearch] = useState('');
   const [sectorFilter, setSectorFilter] = useState('');
   const [assetClassFilter, setAssetClassFilter] = useState('');
+
+  // Modal state
+  const [addOpen, setAddOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<HoldingItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<HoldingItem | null>(null);
 
   useEffect(() => {
     if (!selectedPortfolioId) return;
@@ -35,25 +44,49 @@ export function Holdings() {
     ? [...new Set(data.holdings.map((h) => h.asset_class))].sort()
     : [];
 
+  function handleDeleteConfirm() {
+    if (!deleteTarget || !selectedPortfolioId) return;
+    const securityId = (deleteTarget as HoldingItem & { security_id?: number }).security_id ?? 0;
+    dispatch(deleteHolding({ portfolioId: selectedPortfolioId, securityId }));
+    setDeleteTarget(null);
+  }
+
+  function handleExportCsv() {
+    if (!data) return;
+    const headers = ['Ticker', 'Security Name', 'Sector', 'Asset Class', 'Weight', 'Target Weight', 'Drift', 'Market Value', 'Quantity'];
+    const rows = data.holdings.map((h) => [
+      h.ticker,
+      h.name,
+      h.sector,
+      h.asset_class,
+      formatPercent(h.weight),
+      h.target_weight !== null ? formatPercent(h.target_weight) : '',
+      h.weight_drift !== null ? formatPercent(h.weight_drift) : '',
+      formatCurrency(h.market_value),
+      h.quantity,
+    ]);
+    downloadCsv(`holdings_${data.portfolio_id}_${data.as_of_date}.csv`, headers, rows);
+  }
+
   const columns: Column<HoldingItem>[] = [
     {
       key: 'ticker',
       header: 'Ticker',
       accessor: (r) => r.ticker,
-      render: (r) => <span className="font-mono text-xs font-semibold text-gray-900">{r.ticker}</span>,
+      render: (r) => <span className="font-mono text-xs font-semibold text-clay-ink">{r.ticker}</span>,
     },
     {
       key: 'name',
       header: 'Security Name',
       accessor: (r) => r.name,
-      render: (r) => <span className="text-gray-700">{r.name}</span>,
+      render: (r) => <span className="text-clay-ink">{r.name}</span>,
     },
     {
       key: 'sector',
       header: 'Sector',
       accessor: (r) => r.sector,
       render: (r) => (
-        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">{r.sector}</span>
+        <span className="clay-pill">{r.sector}</span>
       ),
     },
     {
@@ -61,7 +94,7 @@ export function Holdings() {
       header: 'Asset Class',
       accessor: (r) => r.asset_class,
       render: (r) => (
-        <span className="text-xs text-gray-500">{r.asset_class}</span>
+        <span className="text-xs text-clay-muted">{r.asset_class}</span>
       ),
     },
     {
@@ -69,14 +102,18 @@ export function Holdings() {
       header: 'Weight',
       accessor: (r) => r.weight,
       align: 'right',
-      render: (r) => <span className="font-medium">{formatPercent(r.weight)}</span>,
+      render: (r) => <span className="font-mono font-medium text-clay-ink">{formatPercent(r.weight)}</span>,
     },
     {
       key: 'target_weight',
       header: 'Target',
       accessor: (r) => r.target_weight ?? 0,
       align: 'right',
-      render: (r) => r.target_weight !== null ? formatPercent(r.target_weight) : '—',
+      render: (r) => (
+        <span className="font-mono text-clay-muted">
+          {r.target_weight !== null ? formatPercent(r.target_weight) : '—'}
+        </span>
+      ),
     },
     {
       key: 'drift',
@@ -84,9 +121,16 @@ export function Holdings() {
       accessor: (r) => r.weight_drift ?? 0,
       align: 'right',
       render: (r) => {
-        if (r.weight_drift === null) return '—';
+        if (r.weight_drift === null) return <span className="font-mono text-clay-soft">—</span>;
+        const abs = Math.abs(r.weight_drift);
+        const colorClass =
+          abs <= 0.005
+            ? 'text-clay-mint'
+            : abs <= 0.02
+            ? 'text-clay-honey'
+            : 'text-clay-coral';
         return (
-          <span className={`text-xs font-medium ${signColor(r.weight_drift)}`}>
+          <span className={`font-mono text-xs font-medium ${colorClass}`}>
             {r.weight_drift > 0 ? '+' : ''}{formatPercent(r.weight_drift)}
           </span>
         );
@@ -97,14 +141,44 @@ export function Holdings() {
       header: 'Market Value',
       accessor: (r) => r.market_value,
       align: 'right',
-      render: (r) => formatCurrency(r.market_value),
+      render: (r) => <span className="font-mono text-clay-ink">{formatCurrency(r.market_value)}</span>,
     },
     {
       key: 'quantity',
       header: 'Quantity',
       accessor: (r) => r.quantity,
       align: 'right',
-      render: (r) => r.quantity.toLocaleString('en-CA', { maximumFractionDigits: 0 }),
+      render: (r) => (
+        <span className="font-mono text-clay-muted">
+          {r.quantity.toLocaleString('en-CA', { maximumFractionDigits: 0 })}
+        </span>
+      ),
+    },
+    {
+      key: 'actions',
+      header: 'Actions',
+      accessor: () => 0,
+      align: 'right',
+      render: (r) => (
+        <div className="flex items-center justify-end gap-1">
+          <button
+            type="button"
+            aria-label={`Edit ${r.ticker}`}
+            className="clay-icon-button"
+            onClick={() => setEditTarget(r)}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            aria-label={`Remove ${r.ticker}`}
+            className="clay-icon-button"
+            onClick={() => setDeleteTarget(r)}
+          >
+            <Trash2 className="h-3.5 w-3.5 text-clay-coral" />
+          </button>
+        </div>
+      ),
     },
   ];
 
@@ -112,59 +186,109 @@ export function Holdings() {
 
   return (
     <div className="space-y-6">
+      {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-gray-900">Holdings & Exposures</h1>
-          <p className="text-xs text-gray-500">
-            {data ? `${data.holdings.length} positions · ${data.as_of_date} · Total: ${formatCurrencyCompact(data.total_market_value)}` : 'Loading...'}
+          <h1 className="text-2xl font-bold text-clay-ink">Holdings</h1>
+          <p className="text-sm text-clay-muted">
+            {data
+              ? (
+                <>
+                  {data.holdings.length} positions
+                  {' · '}Total{' '}
+                  <Term termKey="marketValue">market value</Term>
+                  {': '}
+                  {formatCurrencyCompact(data.total_market_value)}
+                </>
+              )
+              : 'Loading...'}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setAddOpen(true)}
+          disabled={!selectedPortfolioId}
+          className="clay-button flex items-center gap-1.5"
+        >
+          <Plus className="h-4 w-4" />
+          <Term termKey="holdingsEditor">Add Holding</Term>
+        </button>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search ticker or name..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm text-gray-700 placeholder:text-gray-400 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-400"
-          />
+      {/* Filter bar */}
+      <div className="clay-card-lifted">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Search */}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-clay-soft" />
+            <input
+              type="text"
+              placeholder="Search by ticker or name..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="clay-input pl-9"
+            />
+          </div>
+
+          {/* Sector filter */}
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs font-medium text-clay-muted">
+              <Term termKey="sector">Sector</Term>
+            </label>
+            <select
+              value={sectorFilter}
+              onChange={(e) => setSectorFilter(e.target.value)}
+              className="clay-select"
+            >
+              <option value="">All Sectors</option>
+              {sectors.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Asset class filter */}
+          <div className="flex items-center gap-1.5">
+            <label className="text-xs font-medium text-clay-muted">
+              <Term termKey="assetClass">Asset Class</Term>
+            </label>
+            <select
+              value={assetClassFilter}
+              onChange={(e) => setAssetClassFilter(e.target.value)}
+              className="clay-select"
+            >
+              <option value="">All Asset Classes</option>
+              {assetClasses.map((a) => (
+                <option key={a} value={a}>{a}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Clear filters */}
+          {(sectorFilter || assetClassFilter || search) && (
+            <button
+              onClick={() => { setSectorFilter(''); setAssetClassFilter(''); setSearch(''); }}
+              className="clay-button-ghost text-xs"
+            >
+              Clear filters
+            </button>
+          )}
+
+          {/* Spacer + CSV export */}
+          <div className="ml-auto">
+            <button
+              onClick={handleExportCsv}
+              disabled={!data}
+              className="clay-button flex items-center gap-1.5"
+            >
+              <Download className="h-4 w-4" />
+              <Term termKey="csvExport">Export CSV</Term>
+            </button>
+          </div>
         </div>
-
-        <select
-          value={sectorFilter}
-          onChange={(e) => setSectorFilter(e.target.value)}
-          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-400"
-        >
-          <option value="">All Sectors</option>
-          {sectors.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-
-        <select
-          value={assetClassFilter}
-          onChange={(e) => setAssetClassFilter(e.target.value)}
-          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-400"
-        >
-          <option value="">All Asset Classes</option>
-          {assetClasses.map((a) => (
-            <option key={a} value={a}>{a}</option>
-          ))}
-        </select>
-
-        {(sectorFilter || assetClassFilter || search) && (
-          <button
-            onClick={() => { setSectorFilter(''); setAssetClassFilter(''); setSearch(''); }}
-            className="text-xs text-brand-600 hover:text-brand-800"
-          >
-            Clear filters
-          </button>
-        )}
       </div>
 
+      {/* Data table */}
       {loading ? (
         <LoadingSpinner />
       ) : data && data.holdings.length === 0 ? (
@@ -173,9 +297,42 @@ export function Holdings() {
         <DataTable<HoldingItem>
           columns={columns}
           data={data.holdings}
-          exportFilename={`holdings_${data.portfolio_id}_${data.as_of_date}.csv`}
         />
       ) : null}
+
+      {/* Add holding modal */}
+      {selectedPortfolioId !== null && (
+        <HoldingFormModal
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          portfolioId={selectedPortfolioId}
+        />
+      )}
+
+      {/* Edit holding modal */}
+      {selectedPortfolioId !== null && editTarget && (
+        <HoldingFormModal
+          open={Boolean(editTarget)}
+          onClose={() => setEditTarget(null)}
+          portfolioId={selectedPortfolioId}
+          initial={editTarget}
+        />
+      )}
+
+      {/* Delete holding confirm */}
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={handleDeleteConfirm}
+        title="Remove Holding"
+        body={
+          deleteTarget
+            ? `Remove ${deleteTarget.ticker} (${deleteTarget.name}) from this portfolio? This cannot be undone.`
+            : ''
+        }
+        confirmLabel="Remove"
+        danger
+      />
     </div>
   );
 }

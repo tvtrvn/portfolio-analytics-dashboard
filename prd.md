@@ -1,6 +1,6 @@
 # Product Requirements Document — Portfolio Analytics Dashboard
 
-> Version 1.0 · April 2026
+> Version 2.0 · May 2026
 
 ---
 
@@ -21,7 +21,7 @@ Build a production-grade, full-stack portfolio analytics dashboard that mirrors 
 
 ## 3. Non-goals
 
-- Real-time market data feeds or live trade execution.
+- Real-time (intraday) market data feeds or live trade execution.
 - User authentication or multi-tenant access control.
 - Mobile-first design (this is a desktop-first tool for analysts on wide screens).
 - Algorithmic trading, backtesting, or strategy optimization.
@@ -91,6 +91,15 @@ Build a production-grade, full-stack portfolio analytics dashboard that mirrors 
 - Period selection is global — changing it updates all data on the current page.
 - All analytics endpoints accept optional `period`, `start_date`, `end_date` query parameters.
 
+### 5.8 Live Market Data + Portfolio Editor
+
+- End-of-day close prices are fetched from Yahoo Finance via `yfinance` and stored in the `prices` table using an idempotent upsert (`ON CONFLICT DO NOTHING`).
+- Prices carry forward the last known close on weekends and holidays, ensuring continuous return series.
+- A nightly GitHub Actions cron job (`0 23 * * *` UTC) triggers `POST /api/admin/refresh-prices`, which calls `refresh_service.refresh_all()`. The refresh recomputes `portfolio_returns` and updates `holdings.weight` and `holdings.market_value` automatically.
+- A keepalive workflow pings `GET /api/health/keepalive` every 10 minutes (`*/10 * * * *`) to prevent cold starts on the Koyeb free tier.
+- The `seed.py` script is used for first-run bootstrapping only. After the initial seed, all subsequent price data comes from yfinance; the simulated GBM generator is retained in `seed.py` for offline demos.
+- The frontend provides a holdings editor: users can create and delete portfolios, and add, edit, or remove individual holdings directly from the Holdings page using modal dialogs.
+
 ---
 
 ## 6. Technical Architecture
@@ -134,6 +143,24 @@ Build a production-grade, full-stack portfolio analytics dashboard that mirrors 
 | Backend | Koyeb Web Service (buildpack, auto-deploys from `main`) |
 | Database | Koyeb Managed PostgreSQL |
 
+### 6.5 Live Data Services
+
+| Module | Path | Responsibility |
+| --- | --- | --- |
+| Market data wrapper | `backend/app/services/market_data.py` | `yfinance` integration with `cachetools.TTLCache(ttl=3600)`. Exposes `fetch_history(ticker, start, end)`, `fetch_latest_close(ticker)`, and `lookup_ticker(ticker)`. |
+| Refresh service | `backend/app/services/refresh_service.py` | `refresh_all(session, *, portfolio_id, backfill_days=365)` — idempotent upsert of new close prices, recomputation of `portfolio_returns` and `holdings` weights. Returns a summary dict: `{updated_securities, updated_returns_through, skipped, errors}`. |
+| Keepalive probe | `backend/app/services/keepalive.py` | `ping(session)` — executes `SELECT 1` and reads `backend/.last_refresh` to return `{ok, db, last_refresh}`. |
+| Refresh CLI | `backend/refresh_prices.py` | Command-line entry point: `python refresh_prices.py [--portfolio-id N] [--backfill-days N]`. Calls `refresh_all` directly without going through the HTTP layer. |
+
+### 6.6 Automation
+
+| Workflow | File | Schedule | Action |
+| --- | --- | --- | --- |
+| Daily price refresh | `.github/workflows/refresh-prices.yml` | `0 23 * * *` UTC | `POST /api/admin/refresh-prices` with `X-Refresh-Token` header |
+| Keepalive ping | `.github/workflows/keepalive.yml` | `*/10 * * * *` | `GET /api/health/keepalive` |
+
+Both workflows require two GitHub repository secrets: `BACKEND_URL` and `REFRESH_TOKEN`.
+
 ---
 
 ## 7. Data Model
@@ -176,6 +203,17 @@ All endpoints are prefixed with `/api`. Analytics endpoints accept optional `per
 | GET | `/portfolios/{id}/benchmark-comparison` | Portfolio vs benchmark with tracking error and IR |
 | GET | `/portfolios/{id}/risk-metrics` | VaR, CVaR, beta, rolling volatility, drawdown series |
 | GET | `/health` | Health check |
+| GET | `/health/keepalive` | Liveness probe; returns `{ok, db, last_refresh}` |
+| POST | `/portfolios` | Create a new portfolio |
+| PUT | `/portfolios/{id}` | Update portfolio metadata |
+| DELETE | `/portfolios/{id}` | Delete a portfolio and its holdings |
+| GET | `/securities` | List all securities |
+| GET | `/securities/lookup?ticker=` | Look up a ticker via yfinance; returns name, sector, exchange |
+| POST | `/securities` | Add a new security record |
+| POST | `/portfolios/{id}/holdings` | Add a holding to a portfolio |
+| PUT | `/portfolios/{id}/holdings/{security_id}` | Update quantity or weight for a holding |
+| DELETE | `/portfolios/{id}/holdings/{security_id}` | Remove a holding from a portfolio |
+| POST | `/admin/refresh-prices` | Trigger price refresh; requires `X-Refresh-Token` request header |
 
 ---
 
@@ -194,7 +232,7 @@ All endpoints are prefixed with `/api`. Analytics endpoints accept optional `per
 
 ## 10. Analytics Calculations
 
-All calculations are implemented in a pure Python module (`services/analytics.py`) with no database dependency:
+All calculations are implemented in a pure Python module (`services/analytics.py`) with no database dependency. As of v2, the `prices` table is populated with real end-of-day close prices sourced from Yahoo Finance (via `market_data.py`). On weekends and holidays where no trading session occurred, `refresh_service` carries forward the last known close so the return series remains continuous. All analytics formulas operate on this live price data.
 
 - **Cumulative Return** — Compound product of (1 + daily_return) minus 1.
 - **Annualized Return** — Geometric scaling assuming 252 trading days per year.
@@ -227,7 +265,7 @@ All calculations are implemented in a pure Python module (`services/analytics.py
 ## 12. Future Enhancements
 
 - User authentication with role-based access (PM vs analyst vs read-only).
-- Real-time market data integration via a third-party API.
+- Intraday refresh (5-minute intervals) via Polygon or Alpaca paid data tier.
 - PDF report generation for client presentations.
 - Alembic database migrations for schema evolution.
 - Transaction history page with filtering and aggregation.

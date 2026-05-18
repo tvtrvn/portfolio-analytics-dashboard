@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Float, Date, DateTime, ForeignKey, Text,
-    Numeric, BigInteger, Index, func
+    Numeric, BigInteger, Index, UniqueConstraint, func
 )
 from sqlalchemy.orm import relationship
 from app.database import Base
@@ -76,6 +76,7 @@ class Price(Base):
     __tablename__ = "prices"
     __table_args__ = (
         Index("ix_prices_security_date", "security_id", "date"),
+        UniqueConstraint("security_id", "date", name="uq_prices_security_date"),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -92,6 +93,7 @@ class PortfolioReturn(Base):
     __tablename__ = "portfolio_returns"
     __table_args__ = (
         Index("ix_portfolio_returns_portfolio_date", "portfolio_id", "date"),
+        UniqueConstraint("portfolio_id", "date", name="uq_portfolio_returns_portfolio_date"),
     )
 
     id = Column(Integer, primary_key=True, index=True)

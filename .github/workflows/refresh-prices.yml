@@ -1,0 +1,33 @@
+# Daily Price Refresh Workflow
+#
+# Purpose: Calls the backend's /api/admin/refresh-prices endpoint daily at 23:00 UTC
+# (6pm ET / 3pm PT) to refresh yfinance stock price data.
+#
+# Required Secrets:
+#   - BACKEND_URL: Base URL of the backend (e.g., https://your-app.koyeb.app)
+#   - REFRESH_TOKEN: Authentication token matching backend REFRESH_TOKEN env var
+#
+# Setup: Go to GitHub repo Settings → Secrets and variables → Actions → New repository secret
+# and add BACKEND_URL and REFRESH_TOKEN.
+#
+# Note: For private repos, Actions minutes consume ~1440/month at this daily schedule.
+
+name: Daily Price Refresh
+on:
+  schedule:
+    - cron: '0 23 * * *'   # 23:00 UTC daily = 6pm ET / 3pm PT
+  workflow_dispatch:        # manual trigger in GitHub UI
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger backend refresh
+        run: |
+          curl -sS -X POST "${{ secrets.BACKEND_URL }}/api/admin/refresh-prices" \
+            -H "X-Refresh-Token: ${{ secrets.REFRESH_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{}' \
+            --connect-timeout 60 \
+            --max-time 300 \
+            --fail-with-body -w "\nHTTP %{http_code}\n"

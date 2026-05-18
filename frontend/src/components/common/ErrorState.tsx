@@ -7,16 +7,15 @@ interface ErrorStateProps {
 
 export function ErrorState({ message, onRetry }: ErrorStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 text-center">
-      <AlertTriangle className="mb-3 h-10 w-10 text-red-400" />
-      <p className="mb-1 text-sm font-medium text-gray-700">Something went wrong</p>
-      <p className="mb-4 text-xs text-gray-500">{message}</p>
+    <div className="clay-card flex flex-col items-center justify-center py-16 text-center">
+      <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-clay-coralSoft shadow-clay-inset">
+        <AlertTriangle className="h-7 w-7 text-clay-coral" />
+      </div>
+      <p className="mb-1 text-sm font-semibold text-clay-ink">Something looks off</p>
+      <p className="mb-5 text-xs text-clay-muted">{message}</p>
       {onRetry && (
-        <button
-          onClick={onRetry}
-          className="rounded-md bg-brand-600 px-4 py-2 text-xs font-medium text-white hover:bg-brand-700 transition-colors"
-        >
-          Retry
+        <button onClick={onRetry} className="clay-button">
+          Try again
         </button>
       )}
     </div>

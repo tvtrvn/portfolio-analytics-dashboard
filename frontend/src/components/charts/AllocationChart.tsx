@@ -1,17 +1,29 @@
 import {
-  ResponsiveContainer, PieChart, Pie, Cell, Tooltip, Legend,
+  ResponsiveContainer, PieChart, Pie, Cell, Tooltip,
 } from 'recharts';
-import { formatPercent, formatCurrencyCompact } from '../../utils/format';
+import { formatCurrencyCompact } from '../../utils/format';
 
 const COLORS = [
-  '#334e68', '#486581', '#627d98', '#829ab1', '#9fb3c8',
-  '#bcccdc', '#d9e2ec', '#3b82f6', '#6366f1', '#8b5cf6',
-  '#a78bfa', '#c4b5fd',
+  '#7C6FE8', '#58C9A3', '#6FB3E8', '#F2C66B', '#F08A7E',
+  '#A8C99E', '#F5A4C0', '#F7C8A8', '#C7BFF0',
 ];
 
 interface AllocationChartProps {
   data: { name: string; weight: number; market_value: number }[];
   title: string;
+}
+
+function CustomTooltip({ active, payload }: any) {
+  if (!active || !payload?.length) return null;
+  const entry = payload[0];
+  return (
+    <div className="rounded-clay border border-clay-border bg-clay-surface p-3 text-sm shadow-clay-lg">
+      <p className="text-xs text-clay-muted">{entry.name}</p>
+      <p className="font-mono font-semibold text-clay-ink">
+        {entry.value.toFixed(1)}% ({formatCurrencyCompact(entry.payload?.market_value ?? 0)})
+      </p>
+    </div>
+  );
 }
 
 export function AllocationChart({ data, title }: AllocationChartProps) {
@@ -21,11 +33,11 @@ export function AllocationChart({ data, title }: AllocationChartProps) {
     .map((d) => ({ ...d, pct: d.weight * 100 }));
 
   return (
-    <div className="card">
-      <div className="card-header">
-        <h3 className="text-sm font-semibold text-gray-800">{title}</h3>
+    <div className="clay-card">
+      <div className="border-b border-clay-border px-5 py-3">
+        <h3 className="font-semibold text-clay-ink">{title}</h3>
       </div>
-      <div className="card-body">
+      <div className="p-5">
         <ResponsiveContainer width="100%" height={280}>
           <PieChart>
             <Pie
@@ -34,37 +46,35 @@ export function AllocationChart({ data, title }: AllocationChartProps) {
               nameKey="name"
               cx="50%"
               cy="50%"
-              innerRadius={60}
-              outerRadius={100}
-              paddingAngle={1}
-              stroke="none"
+              innerRadius={68}
+              outerRadius={108}
+              paddingAngle={2}
+              stroke="#FFFFFF"
+              strokeWidth={3}
             >
               {chartData.map((_, i) => (
                 <Cell key={i} fill={COLORS[i % COLORS.length]} />
               ))}
             </Pie>
-            <Tooltip
-              contentStyle={{
-                backgroundColor: '#fff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                fontSize: '12px',
-              }}
-              formatter={(value: number, name: string, entry: any) => [
-                `${value.toFixed(1)}% (${formatCurrencyCompact(entry?.payload?.market_value ?? 0)})`,
-                name,
-              ]}
-            />
-            <Legend
-              layout="vertical"
-              align="right"
-              verticalAlign="middle"
-              iconType="circle"
-              iconSize={8}
-              wrapperStyle={{ fontSize: '11px', lineHeight: '20px' }}
-            />
+            <Tooltip content={<CustomTooltip />} />
           </PieChart>
         </ResponsiveContainer>
+        {/* Clay-pill legend */}
+        <div className="mt-3 flex flex-wrap gap-2">
+          {chartData.map((entry, i) => (
+            <span
+              key={entry.name}
+              className="clay-pill flex items-center gap-1.5"
+            >
+              <span
+                className="inline-block h-2 w-2 rounded-full"
+                style={{ backgroundColor: COLORS[i % COLORS.length] }}
+              />
+              <span className="text-clay-ink">{entry.name}</span>
+              <span className="font-mono text-clay-muted">{entry.pct.toFixed(1)}%</span>
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );

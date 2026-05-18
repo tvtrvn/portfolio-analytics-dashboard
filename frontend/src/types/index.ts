@@ -168,3 +168,44 @@ export interface RiskMetricsResponse {
 }
 
 export type TimePeriod = '1M' | '3M' | '6M' | 'YTD' | '1Y' | 'SI';
+
+// CRUD payload types
+export interface PortfolioCreate {
+  name: string;
+  strategy: string;
+  benchmark_id?: number;
+  inception_date: string;
+  currency: string;
+  description?: string;
+}
+
+export type PortfolioUpdate = Partial<PortfolioCreate>;
+
+export interface HoldingCreate {
+  ticker: string;
+  quantity: number;
+  cost_basis?: number;
+  target_weight?: number;
+}
+
+export type HoldingUpdate = Partial<HoldingCreate>;
+
+export interface SecurityMetadata {
+  ticker: string;
+  name: string;
+  sector: string;
+  asset_class: string;
+  currency: string;
+  exchange: string;
+}
+
+// Holding as returned by the mutation endpoints (minimal shape used by thunks)
+export interface Holding {
+  id: number;
+  portfolio_id: number;
+  security_id: number;
+  ticker: string;
+  quantity: number;
+  cost_basis: number | null;
+  target_weight: number | null;
+}

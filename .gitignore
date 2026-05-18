@@ -29,3 +29,10 @@ Thumbs.db
 # Personal notes
 prompt.md
 resume.md
+.gitnexus
+
+# Claude Code machine-local permissions (project skills under .claude/skills/ are committed)
+.claude/settings.local.json
+
+# Refresh-job runtime marker
+backend/.last_refresh

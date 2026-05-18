@@ -9,6 +9,12 @@ import type {
   AttributionResponse,
   BenchmarkComparisonResponse,
   RiskMetricsResponse,
+  PortfolioCreate,
+  PortfolioUpdate,
+  HoldingCreate,
+  HoldingUpdate,
+  SecurityMetadata,
+  Holding,
 } from '../types';
 
 type QueryParams = Record<string, string | undefined>;
@@ -44,4 +50,32 @@ export const portfolioApi = {
 
   getRiskMetrics: (id: number, period?: string) =>
     api.get<RiskMetricsResponse>(`/portfolios/${id}/risk-metrics`, periodParams(period)),
+
+  // Benchmarks (speculative — Agent B provides this endpoint)
+  listBenchmarks: () =>
+    api.get<{ id: number; name: string }[]>('/benchmarks'),
+
+  // Portfolio CRUD
+  createPortfolio: (body: PortfolioCreate) =>
+    api.post<Portfolio>('/portfolios', body),
+
+  updatePortfolio: (id: number, body: PortfolioUpdate) =>
+    api.put<Portfolio>(`/portfolios/${id}`, body),
+
+  deletePortfolio: (id: number) =>
+    api.delete(`/portfolios/${id}`),
+
+  // Securities
+  lookupTicker: (ticker: string) =>
+    api.get<SecurityMetadata>('/securities/lookup', { ticker }),
+
+  // Holdings CRUD
+  addHolding: (portfolioId: number, body: HoldingCreate) =>
+    api.post<Holding>(`/portfolios/${portfolioId}/holdings`, body),
+
+  updateHolding: (portfolioId: number, securityId: number, body: HoldingUpdate) =>
+    api.put<Holding>(`/portfolios/${portfolioId}/holdings/${securityId}`, body),
+
+  deleteHolding: (portfolioId: number, securityId: number) =>
+    api.delete(`/portfolios/${portfolioId}/holdings/${securityId}`),
 };

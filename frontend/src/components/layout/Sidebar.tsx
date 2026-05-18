@@ -1,35 +1,40 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
-  Briefcase,
-  TrendingUp,
+  Wallet,
+  LineChart,
   PieChart,
-  ShieldAlert,
+  Shield,
+  TrendingUp,
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/holdings', icon: Briefcase, label: 'Holdings' },
-  { to: '/performance', icon: TrendingUp, label: 'Performance' },
+  { to: '/holdings', icon: Wallet, label: 'Holdings' },
+  { to: '/performance', icon: LineChart, label: 'Performance' },
   { to: '/attribution', icon: PieChart, label: 'Attribution' },
-  { to: '/risk', icon: ShieldAlert, label: 'Risk Metrics' },
+  { to: '/risk', icon: Shield, label: 'Risk Metrics' },
 ];
 
 export function Sidebar() {
   return (
-    <aside className="fixed left-0 top-0 z-30 flex h-screen w-60 flex-col border-r border-gray-200 bg-white">
-      <div className="flex h-16 items-center gap-2.5 border-b border-gray-100 px-5">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-700 text-white text-xs font-bold">
-          PA
-        </div>
-        <div>
-          <p className="text-sm font-semibold text-gray-900 leading-tight">Portfolio Analytics</p>
-          <p className="text-[10px] text-gray-400 uppercase tracking-widest">Dashboard</p>
+    <aside className="fixed left-0 top-0 z-30 flex h-screen w-72 flex-col bg-clay-surface shadow-clay">
+      {/* Logo block */}
+      <div className="px-5 pt-6 pb-4">
+        <div className="clay-card-sm flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-clay bg-clay-primarySoft">
+            <TrendingUp className="h-6 w-6 text-clay-primary" strokeWidth={2} />
+          </div>
+          <div>
+            <p className="text-sm font-bold text-clay-ink leading-tight">Portfolio Analytics</p>
+            <p className="text-[10px] text-clay-muted font-medium uppercase tracking-widest">Dashboard</p>
+          </div>
         </div>
       </div>
 
-      <nav className="flex-1 space-y-0.5 px-3 py-4">
-        <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-widest text-gray-400">
+      {/* Nav items */}
+      <nav className="flex-1 space-y-1 px-4 py-2">
+        <p className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-widest text-clay-soft">
           Navigation
         </p>
         {NAV_ITEMS.map(({ to, icon: Icon, label }) => (
@@ -38,26 +43,22 @@ export function Sidebar() {
             to={to}
             end={to === '/'}
             className={({ isActive }) =>
-              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
+              `flex items-center gap-3 rounded-full px-4 py-2.5 text-sm transition-all duration-200 ${
                 isActive
-                  ? 'bg-brand-50 text-brand-800'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                  ? 'bg-clay-primarySoft text-clay-primaryDeep shadow-clay-sm font-semibold'
+                  : 'text-clay-muted hover:bg-clay-surface2 hover:text-clay-ink font-medium'
               }`
             }
           >
-            <Icon className="h-4.5 w-4.5" strokeWidth={1.8} />
+            <Icon className="h-[18px] w-[18px] flex-shrink-0" strokeWidth={1.9} />
             {label}
           </NavLink>
         ))}
       </nav>
 
-      <div className="border-t border-gray-100 px-5 py-4">
-        <p className="text-[10px] text-gray-400">
-          TD Asset Management
-        </p>
-        <p className="text-[10px] text-gray-300">
-          Internal Analytics Platform
-        </p>
+      {/* Bottom tag */}
+      <div className="px-5 pb-6 pt-2">
+        <span className="clay-pill">Demo data</span>
       </div>
     </aside>
   );
