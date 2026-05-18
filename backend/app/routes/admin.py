@@ -32,6 +32,6 @@ def refresh_prices(
     return RefreshResult(
         updated_securities=result.get("updated_securities", 0),
         updated_returns_through=result.get("updated_returns_through"),
-        skipped=result.get("skipped", 0),
+        skipped=result.get("skipped", []),
         errors=result.get("errors", []),
     )

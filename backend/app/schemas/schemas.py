@@ -112,8 +112,8 @@ class RefreshRequest(BaseModel):
 class RefreshResult(BaseModel):
     updated_securities: int
     updated_returns_through: Optional[date] = None
-    skipped: int
-    errors: list[str]
+    skipped: list[str] = []
+    errors: list[str] = []
 
 
 class KeepaliveResponse(BaseModel):
