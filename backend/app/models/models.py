@@ -110,6 +110,7 @@ class BenchmarkReturn(Base):
     __tablename__ = "benchmark_returns"
     __table_args__ = (
         Index("ix_benchmark_returns_benchmark_date", "benchmark_id", "date"),
+        UniqueConstraint("benchmark_id", "date", name="uq_benchmark_returns_benchmark_date"),
     )
 
     id = Column(Integer, primary_key=True, index=True)

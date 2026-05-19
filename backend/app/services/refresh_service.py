@@ -386,13 +386,16 @@ def _recompute_benchmark_returns(
 
     upsert_rows: list[dict] = []
     prev_close: Optional[float] = None
+    cum_ret = 0.0
     for d, close in rows:
         if prev_close is not None and prev_close > 0:
             daily_ret = (close - prev_close) / prev_close
+            cum_ret = (1 + cum_ret) * (1 + daily_ret) - 1
             upsert_rows.append({
                 "benchmark_id": benchmark.id,
                 "date": d,
                 "daily_return": round(daily_ret, 8),
+                "cumulative_return": round(cum_ret, 8),
             })
         prev_close = close
 
@@ -402,7 +405,10 @@ def _recompute_benchmark_returns(
     stmt = pg_insert(BenchmarkReturn).values(upsert_rows)
     stmt = stmt.on_conflict_do_update(
         index_elements=["benchmark_id", "date"],
-        set_={"daily_return": stmt.excluded.daily_return},
+        set_={
+            "daily_return": stmt.excluded.daily_return,
+            "cumulative_return": stmt.excluded.cumulative_return,
+        },
     )
     session.execute(stmt)
     logger.info("Upserted %d benchmark_return rows for %s", len(upsert_rows), benchmark.ticker)
@@ -412,6 +418,12 @@ def _recompute_benchmark_returns(
 def _wipe_market_data(session: Session) -> None:
     """Destructive: clears Price, PortfolioReturn, BenchmarkReturn for a real-data rebuild."""
     logger.warning("WIPE: clearing Price, PortfolioReturn, BenchmarkReturn tables")
+    # Ensure the (benchmark_id, date) unique constraint exists — early seeds
+    # were created without it, so ON CONFLICT upserts would fail.
+    session.execute(text(
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_benchmark_returns_benchmark_date "
+        "ON benchmark_returns (benchmark_id, date)"
+    ))
     session.execute(delete(BenchmarkReturn))
     session.execute(delete(PortfolioReturn))
     session.execute(delete(Price))
