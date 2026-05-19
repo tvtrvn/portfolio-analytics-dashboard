@@ -9,5 +9,6 @@ alembic==1.13.1
 numpy==1.26.4
 pandas==2.2.2
 python-dateutil==2.8.2
-yfinance==0.2.40
+yfinance>=0.2.55
+curl_cffi>=0.7.0
 cachetools==5.3.3

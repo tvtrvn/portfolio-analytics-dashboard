@@ -1,7 +1,9 @@
 """
-market_data.py — yfinance wrapper with TTL caching and retry.
+market_data.py — yfinance wrapper with TTL caching.
 
-All public functions return None / empty list on failure — never raise to callers.
+fetch_history raises on yfinance/network errors so callers can route real failures
+to their `errors` channel; empty data (no trading in the requested window) returns [].
+fetch_latest_close and lookup_ticker still swallow errors and return None.
 Cache TTL is 1 hour; keys include ticker + date range to prevent partial-range collisions.
 """
 
@@ -19,6 +21,17 @@ _history_cache: TTLCache = TTLCache(maxsize=512, ttl=3600)
 _latest_cache: TTLCache = TTLCache(maxsize=512, ttl=3600)
 _info_cache: TTLCache = TTLCache(maxsize=512, ttl=3600)
 
+# Yahoo blocks bare-Python user agents; curl_cffi impersonates a browser TLS fingerprint.
+_session = None
+
+
+def _yf_session():
+    global _session
+    if _session is None:
+        from curl_cffi import requests as curl_requests
+        _session = curl_requests.Session(impersonate="chrome")
+    return _session
+
 
 def fetch_history(
     ticker: str,
@@ -31,43 +44,38 @@ def fetch_history(
     yfinance's end is exclusive, so we add one day to include the end date.
     Weekends and holidays simply won't appear in the returned series — callers
     must handle gaps (e.g., carry-forward for return computation).
-    Returns [] on any error.
+    Raises the underlying exception on yfinance/network failure (so refresh_service
+    can surface it in `errors` rather than silently dropping the ticker).
     """
     cache_key = hashkey(ticker, str(start), str(end))
     cached_result = _history_cache.get(cache_key)
     if cached_result is not None:
         return cached_result
 
-    try:
-        yf_end = (end + timedelta(days=1)) if end else None
-        kwargs: dict = {"start": start.isoformat()}
-        if yf_end:
-            kwargs["end"] = yf_end.isoformat()
+    yf_end = (end + timedelta(days=1)) if end else None
+    kwargs: dict = {"start": start.isoformat()}
+    if yf_end:
+        kwargs["end"] = yf_end.isoformat()
 
-        t = yf.Ticker(ticker)
-        hist = t.history(**kwargs)
+    t = yf.Ticker(ticker, session=_yf_session())
+    hist = t.history(**kwargs)
 
-        if hist.empty:
-            logger.warning("fetch_history: no data returned for %s (start=%s, end=%s)", ticker, start, end)
-            _history_cache[cache_key] = []
-            return []
-
-        result: list[tuple[date, float]] = []
-        for ts, row in hist.iterrows():
-            # ts is a pandas Timestamp; convert to date
-            try:
-                d = ts.date() if hasattr(ts, "date") else ts.to_pydatetime().date()
-            except Exception:
-                d = date.fromisoformat(str(ts)[:10])
-            close = float(row["Close"])
-            result.append((d, close))
-
-        _history_cache[cache_key] = result
-        return result
-
-    except Exception as exc:
-        logger.error("fetch_history failed for %s: %s", ticker, exc)
+    if hist.empty:
+        logger.warning("fetch_history: no data returned for %s (start=%s, end=%s)", ticker, start, end)
+        _history_cache[cache_key] = []
         return []
+
+    result: list[tuple[date, float]] = []
+    for ts, row in hist.iterrows():
+        try:
+            d = ts.date() if hasattr(ts, "date") else ts.to_pydatetime().date()
+        except Exception:
+            d = date.fromisoformat(str(ts)[:10])
+        close = float(row["Close"])
+        result.append((d, close))
+
+    _history_cache[cache_key] = result
+    return result
 
 
 def fetch_latest_close(ticker: str) -> Optional[tuple[date, float]]:
