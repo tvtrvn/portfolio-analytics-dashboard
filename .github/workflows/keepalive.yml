@@ -27,4 +27,7 @@ jobs:
           curl -sS "${{ secrets.BACKEND_URL }}/api/health/keepalive" \
             --connect-timeout 30 \
             --max-time 60 \
+            --retry 5 \
+            --retry-delay 10 \
+            --retry-all-errors \
             --fail-with-body -w "\nHTTP %{http_code}\n"
