@@ -33,6 +33,7 @@ resume.md
 
 # Claude Code machine-local permissions (project skills under .claude/skills/ are committed)
 .claude/settings.local.json
+.claude/hooks/
 
 # Refresh-job runtime marker
 backend/.last_refresh
