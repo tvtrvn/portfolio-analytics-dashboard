@@ -24,12 +24,13 @@ from datetime import date, timedelta
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func, text, delete
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.models.models import (
-    Security, Price, Portfolio, Holding, PortfolioReturn
+    Security, Price, Portfolio, Holding, PortfolioReturn,
+    Benchmark, BenchmarkReturn,
 )
 from app.services import market_data
 
@@ -114,6 +115,39 @@ def _get_holdings_snapshot(session: Session, portfolio_id: int, snap_date: date)
     return list(session.scalars(stmt).all())
 
 
+def _get_all_holdings_snapshots(
+    session: Session, portfolio_id: int
+) -> dict[date, dict[int, float]]:
+    """
+    Return {snapshot_date: {security_id: quantity}} for every holdings snapshot.
+    Used to walk historical positions when recomputing returns from inception.
+    """
+    stmt = (
+        select(Holding.date, Holding.security_id, Holding.quantity)
+        .where(Holding.portfolio_id == portfolio_id)
+        .order_by(Holding.date)
+    )
+    snapshots: dict[date, dict[int, float]] = {}
+    for row in session.execute(stmt):
+        snapshots.setdefault(row.date, {})[row.security_id] = float(row.quantity)
+    return snapshots
+
+
+def _holdings_as_of(
+    snapshot_dates: list[date],
+    snapshots: dict[date, dict[int, float]],
+    d: date,
+) -> dict[int, float]:
+    """Return holdings on the most recent snapshot ≤ d, or {} if none exist."""
+    chosen: Optional[date] = None
+    for sd in snapshot_dates:
+        if sd <= d:
+            chosen = sd
+        else:
+            break
+    return snapshots.get(chosen, {}) if chosen else {}
+
+
 def _get_price_series(
     session: Session,
     security_ids: list[int],
@@ -170,34 +204,31 @@ def _recompute_portfolio_returns(
     errors: list[str],
 ) -> None:
     """
-    Recompute portfolio_returns from the latest holdings snapshot forward to today.
-    Uses carry-forward pricing for weekends/holidays/missing prices.
-    Upserts rows — ON CONFLICT updates daily_return, cumulative_return, market_value.
+    Recompute portfolio_returns using historical holdings snapshots and real prices.
+
+    Walks every trading day from either (a) the day after the latest existing
+    portfolio_return row, or (b) the earliest holdings snapshot when no rows
+    exist (full rebuild). For each day, uses carry-forward holdings (most recent
+    snapshot ≤ that day) and carry-forward prices.
     """
     today = date.today()
-    snap_date = _get_latest_holdings_date(session, portfolio.id)
-    if snap_date is None:
+    snapshots = _get_all_holdings_snapshots(session, portfolio.id)
+    if not snapshots:
         logger.warning("Portfolio %d has no holdings snapshot; skipping return recompute", portfolio.id)
         return
 
-    holdings = _get_holdings_snapshot(session, portfolio.id, snap_date)
-    if not holdings:
-        return
+    snapshot_dates = sorted(snapshots.keys())
+    earliest_snap = snapshot_dates[0]
+    latest_snap = snapshot_dates[-1]
 
-    security_ids = [h.security_id for h in holdings]
-    quantities: dict[int, float] = {h.security_id: float(h.quantity) for h in holdings}
+    # Union of all security_ids that ever appeared in this portfolio's holdings
+    security_ids = sorted({sid for snap in snapshots.values() for sid in snap})
 
-    # We need prices from one day before snap_date (for day-1 MV) to today
-    price_start = snap_date - timedelta(days=7)  # buffer for carry-forward
-    prices_by_sec = _get_price_series(session, security_ids, price_start, today)
-
-    # Determine the last existing portfolio_return date for this portfolio
     last_ret_date_stmt = select(func.max(PortfolioReturn.date)).where(
         PortfolioReturn.portfolio_id == portfolio.id
     )
     last_ret_date: Optional[date] = session.scalar(last_ret_date_stmt)
 
-    # Anchor cumulative return from most recent DB row
     anchor_cum_ret: float = 0.0
     if last_ret_date:
         anchor_stmt = select(PortfolioReturn.cumulative_return).where(
@@ -208,36 +239,33 @@ def _recompute_portfolio_returns(
         if anchor_val is not None:
             anchor_cum_ret = float(anchor_val)
 
-    # Compute trading days to fill: day after last existing return up to today
-    fill_start = (last_ret_date + timedelta(days=1)) if last_ret_date else snap_date
+    fill_start = (last_ret_date + timedelta(days=1)) if last_ret_date else earliest_snap
     trading_days = _generate_trading_dates(fill_start, today)
-
     if not trading_days:
-        return  # already up to date
+        return
 
-    upsert_rows: list[dict] = []
-    prev_mv: Optional[float] = None
+    price_start = min(earliest_snap, fill_start) - timedelta(days=7)
+    prices_by_sec = _get_price_series(session, security_ids, price_start, today)
+
     cum_ret = anchor_cum_ret
-
-    # Compute prev_mv for the day before fill_start
     prev_day = fill_start - timedelta(days=1)
+    prev_holdings = _holdings_as_of(snapshot_dates, snapshots, prev_day)
     prev_mv_calc = 0.0
-    for sid, qty in quantities.items():
+    for sid, qty in prev_holdings.items():
         p = _carry_forward(prices_by_sec.get(sid, {}), prev_day)
         if p:
             prev_mv_calc += qty * p
-    prev_mv = prev_mv_calc if prev_mv_calc > 0 else None
+    prev_mv: Optional[float] = prev_mv_calc if prev_mv_calc > 0 else None
 
+    upsert_rows: list[dict] = []
     for d in trading_days:
+        active = _holdings_as_of(snapshot_dates, snapshots, d)
         mv = 0.0
-        all_prices_available = True
-        for sid, qty in quantities.items():
+        for sid, qty in active.items():
             p = _carry_forward(prices_by_sec.get(sid, {}), d)
             if p is None:
-                all_prices_available = False
-                mv += qty * _carry_forward(prices_by_sec.get(sid, {}), snap_date) or 0.0
-            else:
-                mv += qty * p
+                p = _carry_forward(prices_by_sec.get(sid, {}), latest_snap) or 0.0
+            mv += qty * p
 
         if prev_mv and prev_mv > 0:
             daily_ret = (mv - prev_mv) / prev_mv
@@ -319,31 +347,112 @@ def _restamp_latest_holdings(
     session.flush()
 
 
+def _get_benchmarks(session: Session) -> list[Benchmark]:
+    return list(session.scalars(select(Benchmark)).all())
+
+
+def _recompute_benchmark_returns(
+    session: Session,
+    benchmark: Benchmark,
+    backfill_days: int,
+    errors: list[str],
+) -> int:
+    """
+    Fetch real close prices for the benchmark ticker via yfinance and upsert
+    daily_return = (close[d] / close[d-1]) - 1 into benchmark_returns.
+
+    Starts at max(existing date) so the prior close is available to compute
+    the first new daily return. ON CONFLICT DO UPDATE — overwrites any
+    synthetic seed values with real numbers.
+    """
+    today = date.today()
+    max_date = session.scalar(
+        select(func.max(BenchmarkReturn.date)).where(
+            BenchmarkReturn.benchmark_id == benchmark.id
+        )
+    )
+    start = (today - timedelta(days=backfill_days)) if max_date is None else max_date
+
+    try:
+        rows = market_data.fetch_history(benchmark.ticker, start, today)
+    except Exception as exc:
+        errors.append(f"benchmark {benchmark.ticker}: {exc}")
+        logger.error("benchmark %s fetch failed: %s", benchmark.ticker, exc)
+        return 0
+
+    if len(rows) < 2:
+        logger.warning("Not enough data for benchmark %s (rows=%d)", benchmark.ticker, len(rows))
+        return 0
+
+    upsert_rows: list[dict] = []
+    prev_close: Optional[float] = None
+    for d, close in rows:
+        if prev_close is not None and prev_close > 0:
+            daily_ret = (close - prev_close) / prev_close
+            upsert_rows.append({
+                "benchmark_id": benchmark.id,
+                "date": d,
+                "daily_return": round(daily_ret, 8),
+            })
+        prev_close = close
+
+    if not upsert_rows:
+        return 0
+
+    stmt = pg_insert(BenchmarkReturn).values(upsert_rows)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["benchmark_id", "date"],
+        set_={"daily_return": stmt.excluded.daily_return},
+    )
+    session.execute(stmt)
+    logger.info("Upserted %d benchmark_return rows for %s", len(upsert_rows), benchmark.ticker)
+    return len(upsert_rows)
+
+
+def _wipe_market_data(session: Session) -> None:
+    """Destructive: clears Price, PortfolioReturn, BenchmarkReturn for a real-data rebuild."""
+    logger.warning("WIPE: clearing Price, PortfolioReturn, BenchmarkReturn tables")
+    session.execute(delete(BenchmarkReturn))
+    session.execute(delete(PortfolioReturn))
+    session.execute(delete(Price))
+    session.flush()
+
+
 def refresh_all(
     session: Session,
     *,
     portfolio_id: Optional[int] = None,
     backfill_days: int = 365,
+    force_rebuild: bool = False,
 ) -> dict:
     """
-    Idempotent refresh of prices and portfolio returns.
+    Idempotent refresh of prices, portfolio returns, and benchmark returns.
 
     Args:
         session: SQLAlchemy session (caller is responsible for commit/rollback).
         portfolio_id: If provided, only refresh securities/portfolios for this portfolio.
-        backfill_days: How many calendar days back to pull if a security has no price history.
+        backfill_days: How many calendar days back to pull when no history exists.
+        force_rebuild: If True, WIPE Price/PortfolioReturn/BenchmarkReturn first,
+            then refetch everything from yfinance. Used to replace synthetic seed
+            data with real numbers; ignores portfolio_id.
 
     Returns:
         {
             "updated_securities": int,
+            "updated_benchmarks": int,
             "updated_returns_through": str,   # YYYY-MM-DD (today)
             "skipped": list[str],
             "errors": list[str],
         }
     """
     today = date.today()
+    if force_rebuild:
+        portfolio_id = None
+        _wipe_market_data(session)
+
     securities = _get_securities(session, portfolio_id)
     updated_securities = 0
+    updated_benchmarks = 0
     skipped: list[str] = []
     errors: list[str] = []
 
@@ -404,7 +513,18 @@ def refresh_all(
             logger.error("Error re-stamping holdings for portfolio %d: %s", portfolio.id, exc)
             errors.append(msg)
 
-    # --- Step 4: Commit and write last-refresh file ---
+    # --- Step 4: Refresh benchmark returns from yfinance ---
+    for benchmark in _get_benchmarks(session):
+        try:
+            inserted = _recompute_benchmark_returns(session, benchmark, backfill_days, errors)
+            if inserted > 0:
+                updated_benchmarks += 1
+        except Exception as exc:
+            msg = f"benchmark {benchmark.ticker}: {exc}"
+            logger.error("Error recomputing benchmark %s: %s", benchmark.ticker, exc)
+            errors.append(msg)
+
+    # --- Step 5: Commit and write last-refresh file ---
     try:
         session.commit()
         _write_last_refresh(today)
@@ -418,6 +538,7 @@ def refresh_all(
 
     return {
         "updated_securities": updated_securities,
+        "updated_benchmarks": updated_benchmarks,
         "updated_returns_through": today.isoformat(),
         "skipped": skipped,
         "errors": errors,

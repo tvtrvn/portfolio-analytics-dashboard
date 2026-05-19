@@ -111,6 +111,7 @@ class RefreshRequest(BaseModel):
 
 class RefreshResult(BaseModel):
     updated_securities: int
+    updated_benchmarks: int = 0
     updated_returns_through: Optional[date] = None
     skipped: list[str] = []
     errors: list[str] = []
