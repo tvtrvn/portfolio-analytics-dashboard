@@ -1,0 +1,25 @@
+# One-shot rebuild from yfinance.
+#
+# DESTRUCTIVE: wipes Price, PortfolioReturn, BenchmarkReturn and refetches
+# ~1500 days of real history from yfinance. Holdings, securities,
+# portfolios, benchmarks, and transactions are preserved.
+#
+# Manual-only — no schedule. Trigger via `gh workflow run rebuild-from-yfinance.yml`
+# or the GitHub Actions UI.
+
+name: Rebuild From yfinance
+on:
+  workflow_dispatch:
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger backend rebuild
+        run: |
+          curl -sS -X POST "${{ secrets.BACKEND_URL }}/api/admin/rebuild-from-yfinance" \
+            -H "X-Refresh-Token: ${{ secrets.REFRESH_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            --connect-timeout 60 \
+            --max-time 600 \
+            --fail-with-body -w "\nHTTP %{http_code}\n"
