@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal } from './Modal';
 import { Term } from '../common/Term';
+import { TickerAutocomplete } from '../common/TickerAutocomplete';
 import { useAppDispatch, useAppSelector } from '../../store/store';
 import { addHolding, updateHolding, clearHoldingsMutateError } from '../../store/slices/holdingsSlice';
 import { fetchSecurities } from '../../store/slices/securitiesSlice';
@@ -53,7 +54,6 @@ export function HoldingFormModal({ open, onClose, portfolioId, initial }: Props)
   const [tickerInput, setTickerInput] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [matchedSecurity, setMatchedSecurity] = useState<SecurityRead | null>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Load securities list on first open
   useEffect(() => {
@@ -84,34 +84,13 @@ export function HoldingFormModal({ open, onClose, portfolioId, initial }: Props)
     }
   }, [open, initial, securities]);
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setShowDropdown(false);
-      }
-    }
-    if (showDropdown) document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, [showDropdown]);
-
-  const filteredSecurities =
-    tickerInput.trim().length === 0
-      ? []
-      : securities.filter(
-          (s) =>
-            s.ticker.toLowerCase().startsWith(tickerInput.toLowerCase()) ||
-            s.name.toLowerCase().includes(tickerInput.toLowerCase()),
-        ).slice(0, 10);
-
   const isNewTicker =
     !isEdit &&
     tickerInput.trim().length > 0 &&
     matchedSecurity === null &&
     !securitiesLoading;
 
-  function handleTickerChange(value: string) {
-    const upper = value.toUpperCase();
+  function handleTickerChange(upper: string) {
     setTickerInput(upper);
     setForm((prev) => ({ ...prev, ticker: upper }));
     setMatchedSecurity(null);
@@ -120,15 +99,7 @@ export function HoldingFormModal({ open, onClose, portfolioId, initial }: Props)
 
   function handleSelectSecurity(sec: SecurityRead) {
     setTickerInput(sec.ticker);
-    setForm((prev) => ({
-      ...prev,
-      ticker: sec.ticker,
-      name: '',
-      sector: '',
-      asset_class: '',
-      currency: '',
-      exchange: '',
-    }));
+    setForm((prev) => ({ ...prev, ticker: sec.ticker, name: '', sector: '', asset_class: '', currency: '', exchange: '' }));
     setMatchedSecurity(sec);
     setShowDropdown(false);
   }
@@ -143,39 +114,21 @@ export function HoldingFormModal({ open, onClose, portfolioId, initial }: Props)
     const ticker = form.ticker.trim().toUpperCase();
     const quantity = parseFloat(form.quantity);
     const cost_basis = form.cost_basis !== '' ? parseFloat(form.cost_basis) : undefined;
-    const target_weight =
-      form.target_weight !== '' ? parseFloat(form.target_weight) : undefined;
+    const target_weight = form.target_weight !== '' ? parseFloat(form.target_weight) : undefined;
 
     if (!ticker || isNaN(quantity) || quantity <= 0) return;
 
     let result;
     if (isEdit && initial) {
       result = await dispatch(
-        updateHolding({
-          portfolioId,
-          securityId: initial.security_id ?? 0,
-          body: { ticker, quantity, cost_basis, target_weight },
-        }),
+        updateHolding({ portfolioId, securityId: initial.security_id ?? 0, body: { ticker, quantity, cost_basis, target_weight } }),
       );
     } else {
-      // Include metadata only for new tickers
       const metaFields =
         matchedSecurity === null
-          ? {
-              name: form.name || undefined,
-              sector: form.sector || undefined,
-              asset_class: form.asset_class || undefined,
-              currency: form.currency || undefined,
-              exchange: form.exchange || undefined,
-            }
+          ? { name: form.name || undefined, sector: form.sector || undefined, asset_class: form.asset_class || undefined, currency: form.currency || undefined, exchange: form.exchange || undefined }
           : {};
-
-      result = await dispatch(
-        addHolding({
-          portfolioId,
-          body: { ticker, quantity, cost_basis, target_weight, ...metaFields },
-        }),
-      );
+      result = await dispatch(addHolding({ portfolioId, body: { ticker, quantity, cost_basis, target_weight, ...metaFields } }));
     }
 
     if (result.meta.requestStatus === 'fulfilled') {
@@ -184,75 +137,32 @@ export function HoldingFormModal({ open, onClose, portfolioId, initial }: Props)
   }
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={isEdit ? 'Edit Holding' : 'Add Holding'}
-      widthClass="max-w-md"
-    >
+    <Modal open={open} onClose={onClose} title={isEdit ? 'Edit Holding' : 'Add Holding'} widthClass="max-w-md">
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
         {/* Ticker autocomplete */}
-        <div className="space-y-1">
-          <label className="block text-xs font-semibold text-clay-muted uppercase tracking-wide">
-            <Term termKey="ticker">Ticker</Term>
-          </label>
-
-          <div className="relative" ref={dropdownRef}>
-            <input
-              type="text"
-              className="clay-input w-full font-mono uppercase"
-              value={tickerInput}
-              onChange={(e) => handleTickerChange(e.target.value)}
-              onFocus={() => tickerInput.trim().length > 0 && setShowDropdown(true)}
-              placeholder="e.g. AAPL"
-              disabled={isEdit}
-              autoFocus
-              maxLength={10}
-              autoComplete="off"
-            />
-
-            {/* Dropdown */}
-            {showDropdown && filteredSecurities.length > 0 && (
-              <div className="absolute z-50 mt-1 w-full clay-card shadow-clay-lg overflow-hidden max-h-52 overflow-y-auto">
-                {filteredSecurities.map((sec) => (
-                  <button
-                    key={sec.id}
-                    type="button"
-                    className="w-full text-left px-3 py-2 hover:bg-clay-bg/60 transition-colors flex items-center justify-between gap-2"
-                    onMouseDown={(e) => e.preventDefault()} // keep focus on input
-                    onClick={() => handleSelectSecurity(sec)}
-                  >
-                    <span className="font-mono text-xs font-semibold text-clay-ink">{sec.ticker}</span>
-                    <span className="text-xs text-clay-muted truncate">{sec.name}</span>
-                    <span className="clay-pill shrink-0 text-[10px]">{sec.sector}</span>
-                  </button>
-                ))}
-              </div>
-            )}
+        {isEdit ? (
+          <div className="space-y-1">
+            <label className="block text-xs font-semibold text-clay-muted uppercase tracking-wide">
+              <Term termKey="ticker">Ticker</Term>
+            </label>
+            <input type="text" className="clay-input w-full font-mono uppercase" value={tickerInput} disabled />
           </div>
+        ) : (
+          <TickerAutocomplete
+            value={tickerInput}
+            onChange={handleTickerChange}
+            onSelect={handleSelectSecurity}
+            securities={securities}
+            matchedSecurity={matchedSecurity}
+            showDropdown={showDropdown}
+            onShowDropdown={setShowDropdown}
+          />
+        )}
 
-          {/* Matched preset preview */}
-          {!isEdit && matchedSecurity && (
-            <div className="clay-card-lifted p-3 mt-1 space-y-0.5">
-              <p className="text-sm font-semibold text-clay-ink">{matchedSecurity.name}</p>
-              <div className="flex flex-wrap gap-1.5 mt-1">
-                <span className="clay-pill">{matchedSecurity.sector}</span>
-                <span className="clay-pill-sky">{matchedSecurity.asset_class}</span>
-                {matchedSecurity.exchange && (
-                  <span className="clay-pill-mint">{matchedSecurity.exchange}</span>
-                )}
-                <span className="clay-pill-honey">{matchedSecurity.currency}</span>
-              </div>
-            </div>
-          )}
-
-          {/* New ticker hint */}
-          {isNewTicker && (
-            <p className="text-xs text-clay-honey mt-1">
-              New ticker — please fill in details below.
-            </p>
-          )}
-        </div>
+        {/* New ticker hint */}
+        {isNewTicker && (
+          <p className="text-xs text-clay-honey -mt-2">New ticker — please fill in details below.</p>
+        )}
 
         {/* Metadata fields for new tickers */}
         {isNewTicker && (
@@ -261,66 +171,28 @@ export function HoldingFormModal({ open, onClose, portfolioId, initial }: Props)
 
             <div className="space-y-1">
               <label className="block text-xs text-clay-muted">Name *</label>
-              <input
-                type="text"
-                className="clay-input w-full"
-                value={form.name}
-                onChange={(e) => setField('name', e.target.value)}
-                placeholder="e.g. Apple Inc."
-                required
-              />
+              <input type="text" className="clay-input w-full" value={form.name} onChange={(e) => setField('name', e.target.value)} placeholder="e.g. Apple Inc." required />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="block text-xs text-clay-muted">Sector *</label>
-                <input
-                  type="text"
-                  className="clay-input w-full"
-                  value={form.sector}
-                  onChange={(e) => setField('sector', e.target.value)}
-                  placeholder="e.g. Technology"
-                  required
-                />
+                <input type="text" className="clay-input w-full" value={form.sector} onChange={(e) => setField('sector', e.target.value)} placeholder="e.g. Technology" required />
               </div>
-
               <div className="space-y-1">
                 <label className="block text-xs text-clay-muted">Asset Class *</label>
-                <input
-                  type="text"
-                  className="clay-input w-full"
-                  value={form.asset_class}
-                  onChange={(e) => setField('asset_class', e.target.value)}
-                  placeholder="e.g. Equity"
-                  required
-                />
+                <input type="text" className="clay-input w-full" value={form.asset_class} onChange={(e) => setField('asset_class', e.target.value)} placeholder="e.g. Equity" required />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="block text-xs text-clay-muted">Currency *</label>
-                <input
-                  type="text"
-                  className="clay-input w-full font-mono uppercase"
-                  value={form.currency}
-                  onChange={(e) => setField('currency', e.target.value.toUpperCase())}
-                  placeholder="e.g. USD"
-                  maxLength={10}
-                  required
-                />
+                <input type="text" className="clay-input w-full font-mono uppercase" value={form.currency} onChange={(e) => setField('currency', e.target.value.toUpperCase())} placeholder="e.g. USD" maxLength={10} required />
               </div>
-
               <div className="space-y-1">
                 <label className="block text-xs text-clay-muted">Exchange</label>
-                <input
-                  type="text"
-                  className="clay-input w-full font-mono uppercase"
-                  value={form.exchange}
-                  onChange={(e) => setField('exchange', e.target.value.toUpperCase())}
-                  placeholder="e.g. NASDAQ"
-                  maxLength={20}
-                />
+                <input type="text" className="clay-input w-full font-mono uppercase" value={form.exchange} onChange={(e) => setField('exchange', e.target.value.toUpperCase())} placeholder="e.g. NASDAQ" maxLength={20} />
               </div>
             </div>
           </div>
@@ -331,15 +203,7 @@ export function HoldingFormModal({ open, onClose, portfolioId, initial }: Props)
           <label className="block text-xs font-semibold text-clay-muted uppercase tracking-wide">
             <Term termKey="quantity">Shares</Term>
           </label>
-          <input
-            type="number"
-            className="clay-input w-full"
-            value={form.quantity}
-            onChange={(e) => setField('quantity', e.target.value)}
-            placeholder="e.g. 100"
-            min={0}
-            step="any"
-          />
+          <input type="number" className="clay-input w-full" value={form.quantity} onChange={(e) => setField('quantity', e.target.value)} placeholder="e.g. 100" min={0} step="any" />
         </div>
 
         {/* Cost Basis + Target Weight row */}
@@ -349,31 +213,14 @@ export function HoldingFormModal({ open, onClose, portfolioId, initial }: Props)
               <Term termKey="costBasis">Cost Basis</Term>
               <span className="ml-1 font-normal text-clay-soft">(per share)</span>
             </label>
-            <input
-              type="number"
-              className="clay-input w-full"
-              value={form.cost_basis}
-              onChange={(e) => setField('cost_basis', e.target.value)}
-              placeholder="e.g. 150.00"
-              min={0}
-              step="any"
-            />
+            <input type="number" className="clay-input w-full" value={form.cost_basis} onChange={(e) => setField('cost_basis', e.target.value)} placeholder="e.g. 150.00" min={0} step="any" />
           </div>
 
           <div className="space-y-1">
             <label className="block text-xs font-semibold text-clay-muted uppercase tracking-wide">
               <Term termKey="targetWeight">Target Weight</Term>
             </label>
-            <input
-              type="number"
-              className="clay-input w-full"
-              value={form.target_weight}
-              onChange={(e) => setField('target_weight', e.target.value)}
-              placeholder="e.g. 0.05"
-              min={0}
-              max={1}
-              step="0.01"
-            />
+            <input type="number" className="clay-input w-full" value={form.target_weight} onChange={(e) => setField('target_weight', e.target.value)} placeholder="e.g. 0.05" min={0} max={1} step="0.01" />
             <p className="text-[10px] text-clay-soft">e.g. 0.05 for 5%</p>
           </div>
         </div>
@@ -385,14 +232,8 @@ export function HoldingFormModal({ open, onClose, portfolioId, initial }: Props)
 
         {/* Actions */}
         <div className="flex items-center justify-end gap-2 pt-2">
-          <button type="button" onClick={onClose} className="clay-button-ghost">
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={mutating || !form.ticker.trim() || !form.quantity}
-            className="clay-button"
-          >
+          <button type="button" onClick={onClose} className="clay-button-ghost">Cancel</button>
+          <button type="submit" disabled={mutating || !form.ticker.trim() || !form.quantity} className="clay-button">
             {mutating ? 'Saving...' : isEdit ? 'Save Changes' : 'Add Holding'}
           </button>
         </div>

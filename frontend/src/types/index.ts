@@ -198,15 +198,6 @@ export interface HoldingCreate {
 
 export type HoldingUpdate = Partial<HoldingCreate>;
 
-export interface SecurityMetadata {
-  ticker: string;
-  name: string;
-  sector: string;
-  asset_class: string;
-  currency: string;
-  exchange: string;
-}
-
 export interface SecurityRead {
   id: number;
   ticker: string;

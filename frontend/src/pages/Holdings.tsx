@@ -10,14 +10,16 @@ import { Term } from '../components/common/Term';
 import { HoldingFormModal } from '../components/modals/HoldingFormModal';
 import { ConfirmDialog } from '../components/modals/ConfirmDialog';
 import { Toast } from '../components/common/Toast';
+import { useMutateErrorToast } from '../hooks/useMutateErrorToast';
 import { formatCurrency, formatPercent, formatCurrencyCompact } from '../utils/format';
 import { downloadCsv } from '../utils/csv';
 import type { HoldingItem } from '../types';
 
 export function Holdings() {
   const dispatch = useAppDispatch();
-  const { data, loading, error, mutateError } = useAppSelector((s) => s.holdings);
+  const { data, loading, error } = useAppSelector((s) => s.holdings);
   const { selectedPortfolioId } = useAppSelector((s) => s.filters);
+  const toastProps = useMutateErrorToast((s) => s.holdings, clearHoldingsMutateError);
 
   const [search, setSearch] = useState('');
   const [sectorFilter, setSectorFilter] = useState('');
@@ -187,13 +189,7 @@ export function Holdings() {
 
   return (
     <div className="space-y-6">
-      {mutateError && (
-        <Toast
-          message={mutateError}
-          kind="error"
-          onDismiss={() => dispatch(clearHoldingsMutateError())}
-        />
-      )}
+      {toastProps && <Toast {...toastProps} />}
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>

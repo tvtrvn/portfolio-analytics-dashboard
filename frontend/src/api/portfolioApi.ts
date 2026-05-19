@@ -13,7 +13,6 @@ import type {
   PortfolioUpdate,
   HoldingCreate,
   HoldingUpdate,
-  SecurityMetadata,
   SecurityRead,
   Holding,
 } from '../types';
@@ -24,33 +23,38 @@ function periodParams(period?: string, startDate?: string, endDate?: string): Qu
   return { period, start_date: startDate, end_date: endDate };
 }
 
+/** Build a `/portfolios/{id}/...` URL. */
+function pUrl(id: number, path: string): string {
+  return `/portfolios/${id}/${path}`;
+}
+
 export const portfolioApi = {
   listPortfolios: () =>
     api.get<Portfolio[]>('/portfolios'),
 
   getSummary: (id: number, period?: string) =>
-    api.get<PortfolioSummary>(`/portfolios/${id}/summary`, periodParams(period)),
+    api.get<PortfolioSummary>(pUrl(id, 'summary'), periodParams(period)),
 
   getHoldings: (id: number, params?: { as_of_date?: string; sector?: string; asset_class?: string; search?: string }) =>
-    api.get<HoldingsResponse>(`/portfolios/${id}/holdings`, params as QueryParams),
+    api.get<HoldingsResponse>(pUrl(id, 'holdings'), params as QueryParams),
 
   getPerformance: (id: number, period?: string) =>
-    api.get<PerformanceResponse>(`/portfolios/${id}/performance`, periodParams(period)),
+    api.get<PerformanceResponse>(pUrl(id, 'performance'), periodParams(period)),
 
   getSectorAllocation: (id: number, asOfDate?: string) =>
-    api.get<SectorAllocationResponse>(`/portfolios/${id}/sector-allocation`, { as_of_date: asOfDate }),
+    api.get<SectorAllocationResponse>(pUrl(id, 'sector-allocation'), { as_of_date: asOfDate }),
 
   getAssetAllocation: (id: number, asOfDate?: string) =>
-    api.get<AssetAllocationResponse>(`/portfolios/${id}/asset-allocation`, { as_of_date: asOfDate }),
+    api.get<AssetAllocationResponse>(pUrl(id, 'asset-allocation'), { as_of_date: asOfDate }),
 
   getAttribution: (id: number, period?: string) =>
-    api.get<AttributionResponse>(`/portfolios/${id}/attribution`, periodParams(period)),
+    api.get<AttributionResponse>(pUrl(id, 'attribution'), periodParams(period)),
 
   getBenchmarkComparison: (id: number, period?: string) =>
-    api.get<BenchmarkComparisonResponse>(`/portfolios/${id}/benchmark-comparison`, periodParams(period)),
+    api.get<BenchmarkComparisonResponse>(pUrl(id, 'benchmark-comparison'), periodParams(period)),
 
   getRiskMetrics: (id: number, period?: string) =>
-    api.get<RiskMetricsResponse>(`/portfolios/${id}/risk-metrics`, periodParams(period)),
+    api.get<RiskMetricsResponse>(pUrl(id, 'risk-metrics'), periodParams(period)),
 
   // Benchmarks (speculative — Agent B provides this endpoint)
   listBenchmarks: () =>
@@ -75,11 +79,11 @@ export const portfolioApi = {
 
   // Holdings CRUD
   addHolding: (portfolioId: number, body: HoldingCreate) =>
-    api.post<Holding>(`/portfolios/${portfolioId}/holdings`, body),
+    api.post<Holding>(pUrl(portfolioId, 'holdings'), body),
 
   updateHolding: (portfolioId: number, securityId: number, body: HoldingUpdate) =>
-    api.put<Holding>(`/portfolios/${portfolioId}/holdings/${securityId}`, body),
+    api.put<Holding>(`${pUrl(portfolioId, 'holdings')}/${securityId}`, body),
 
   deleteHolding: (portfolioId: number, securityId: number) =>
-    api.delete(`/portfolios/${portfolioId}/holdings/${securityId}`),
+    api.delete(`${pUrl(portfolioId, 'holdings')}/${securityId}`),
 };

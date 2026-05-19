@@ -737,13 +737,6 @@ def _portfolio_to_read(db: Session, portfolio: Portfolio) -> PortfolioRead:
 # Security helpers
 # ---------------------------------------------------------------------------
 
-def get_or_create_security(db: Session, ticker: str) -> Security:
-    """Return existing security row for ticker (case-insensitive), or create one."""
-    ticker_upper = ticker.upper()
-    sec = db.query(Security).filter(Security.ticker.ilike(ticker_upper)).first()
-    return sec
-
-
 def upsert_security_for_ticker(
     db: Session,
     payload: SecurityCreate,

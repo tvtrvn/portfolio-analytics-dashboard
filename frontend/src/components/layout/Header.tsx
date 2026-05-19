@@ -7,12 +7,14 @@ import { PeriodSelector } from '../common/PeriodSelector';
 import { PortfolioFormModal } from '../modals/PortfolioFormModal';
 import { ConfirmDialog } from '../modals/ConfirmDialog';
 import { Toast } from '../common/Toast';
+import { useMutateErrorToast } from '../../hooks/useMutateErrorToast';
 import type { TimePeriod } from '../../types';
 
 export function Header() {
   const dispatch = useAppDispatch();
-  const { list, listLoading, mutateError } = useAppSelector((s) => s.portfolio);
+  const { list, listLoading } = useAppSelector((s) => s.portfolio);
   const { selectedPortfolioId, period } = useAppSelector((s) => s.filters);
+  const toastProps = useMutateErrorToast((s) => s.portfolio, clearMutateError);
 
   const [newPortfolioOpen, setNewPortfolioOpen] = useState(false);
   const [editPortfolioOpen, setEditPortfolioOpen] = useState(false);
@@ -52,13 +54,7 @@ export function Header() {
 
   return (
     <>
-      {mutateError && (
-        <Toast
-          message={mutateError}
-          kind="error"
-          onDismiss={() => dispatch(clearMutateError())}
-        />
-      )}
+      {toastProps && <Toast {...toastProps} />}
       <header className="sticky top-0 z-20 clay-card rounded-none px-6 py-3 flex items-center justify-between shadow-clay-sm">
         <div className="flex items-center gap-2">
           {/* Portfolio switcher */}

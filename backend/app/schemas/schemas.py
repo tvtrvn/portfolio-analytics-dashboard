@@ -67,15 +67,6 @@ class SecurityRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class SecurityMetadata(BaseModel):
-    ticker: str
-    name: Optional[str] = None
-    sector: Optional[str] = None
-    asset_class: Optional[str] = None
-    currency: Optional[str] = None
-    exchange: Optional[str] = None
-
-
 class HoldingCreate(BaseModel):
     ticker: str
     quantity: float

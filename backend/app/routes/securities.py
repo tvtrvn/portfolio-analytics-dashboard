@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Security
-from app.schemas.schemas import SecurityCreate, SecurityRead, SecurityMetadata
+from app.schemas.schemas import SecurityCreate, SecurityRead
 from app.services import portfolio_service
 
 try:
