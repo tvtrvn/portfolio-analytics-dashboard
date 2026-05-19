@@ -1,7 +1,6 @@
 import logging
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
 from sqlalchemy import text
 from app.config import get_settings
 from app.database import engine
@@ -27,24 +26,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-@app.middleware("http")
-async def cache_control_middleware(request: Request, call_next):
-    response = await call_next(request)
-    path = request.url.path
-    method = request.method
-    # Apply Cache-Control only to GET 200 responses under /api/portfolios
-    # but not to /admin or /health paths
-    if (
-        method == "GET"
-        and response.status_code == 200
-        and path.startswith("/api/portfolios")
-        and not path.startswith("/api/admin")
-        and not path.startswith("/api/health")
-    ):
-        response.headers["Cache-Control"] = "public, max-age=300"
-    return response
 
 
 app.include_router(portfolios_router, prefix="/api")
