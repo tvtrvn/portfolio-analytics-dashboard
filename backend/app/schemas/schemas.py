@@ -81,6 +81,12 @@ class HoldingCreate(BaseModel):
     quantity: float
     cost_basis: Optional[float] = 0.0
     target_weight: Optional[float] = 0.0
+    # Optional metadata — only used when ticker is not in the Security preset list
+    name: Optional[str] = None
+    sector: Optional[str] = None
+    asset_class: Optional[str] = None
+    currency: Optional[str] = None
+    exchange: Optional[str] = None
 
 
 class HoldingUpdate(BaseModel):

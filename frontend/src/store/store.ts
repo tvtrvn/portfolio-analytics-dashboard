@@ -4,6 +4,7 @@ import portfolioReducer from './slices/portfolioSlice';
 import holdingsReducer from './slices/holdingsSlice';
 import analyticsReducer from './slices/analyticsSlice';
 import filterReducer from './slices/filterSlice';
+import securitiesReducer from './slices/securitiesSlice';
 
 export const store = configureStore({
   reducer: {
@@ -11,6 +12,7 @@ export const store = configureStore({
     holdings: holdingsReducer,
     analytics: analyticsReducer,
     filters: filterReducer,
+    securities: securitiesReducer,
   },
 });
 

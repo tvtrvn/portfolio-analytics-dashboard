@@ -3,8 +3,8 @@ import { Modal } from './Modal';
 import { Term } from '../common/Term';
 import { useAppDispatch, useAppSelector } from '../../store/store';
 import { addHolding, updateHolding, clearHoldingsMutateError } from '../../store/slices/holdingsSlice';
-import { portfolioApi } from '../../api/portfolioApi';
-import type { HoldingItem, SecurityMetadata } from '../../types';
+import { fetchSecurities } from '../../store/slices/securitiesSlice';
+import type { HoldingItem, SecurityRead } from '../../types';
 
 type Props = {
   open: boolean;
@@ -18,73 +18,120 @@ type FormState = {
   quantity: string;
   cost_basis: string;
   target_weight: string;
+  // new-ticker metadata
+  name: string;
+  sector: string;
+  asset_class: string;
+  currency: string;
+  exchange: string;
 };
 
 function toForm(h?: HoldingItem): FormState {
   if (!h) {
-    return { ticker: '', quantity: '', cost_basis: '', target_weight: '' };
+    return { ticker: '', quantity: '', cost_basis: '', target_weight: '', name: '', sector: '', asset_class: '', currency: '', exchange: '' };
   }
   return {
     ticker: h.ticker,
     quantity: String(h.quantity),
     cost_basis: h.cost_basis !== null ? String(h.cost_basis) : '',
     target_weight: h.target_weight !== null ? String(h.target_weight) : '',
+    name: '',
+    sector: '',
+    asset_class: '',
+    currency: '',
+    exchange: '',
   };
 }
-
-type LookupState =
-  | { status: 'idle' }
-  | { status: 'loading' }
-  | { status: 'found'; data: SecurityMetadata }
-  | { status: 'notFound' }
-  | { status: 'error' };
-
-const DEBOUNCE_MS = 400;
 
 export function HoldingFormModal({ open, onClose, portfolioId, initial }: Props) {
   const dispatch = useAppDispatch();
   const { mutating, mutateError } = useAppSelector((s) => s.holdings);
+  const { list: securities, loading: securitiesLoading } = useAppSelector((s) => s.securities);
   const isEdit = Boolean(initial);
 
   const [form, setForm] = useState<FormState>(toForm(initial));
-  const [lookup, setLookup] = useState<LookupState>({ status: 'idle' });
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [tickerInput, setTickerInput] = useState('');
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [matchedSecurity, setMatchedSecurity] = useState<SecurityRead | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Load securities list on first open
+  useEffect(() => {
+    if (open && securities.length === 0 && !securitiesLoading) {
+      dispatch(fetchSecurities());
+    }
+  }, [open, securities.length, securitiesLoading, dispatch]);
 
   // Reset form on open
   useEffect(() => {
     if (open) {
-      setForm(toForm(initial));
-      setLookup({ status: 'idle' });
+      const f = toForm(initial);
+      setForm(f);
+      setTickerInput(initial?.ticker ?? '');
+      setShowDropdown(false);
+      setMatchedSecurity(null);
       dispatch(clearHoldingsMutateError());
     }
   }, [open, initial, dispatch]);
 
-  // Debounced ticker lookup
+  // When editing, look up the preset match for the initial ticker
   useEffect(() => {
-    const ticker = form.ticker.trim().toUpperCase();
-    if (!ticker || isEdit) {
-      setLookup({ status: 'idle' });
-      return;
+    if (open && initial && securities.length > 0) {
+      const match = securities.find(
+        (s) => s.ticker.toLowerCase() === initial.ticker.toLowerCase(),
+      ) ?? null;
+      setMatchedSecurity(match);
     }
+  }, [open, initial, securities]);
 
-    setLookup({ status: 'loading' });
-
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(async () => {
-      try {
-        const data = await portfolioApi.lookupTicker(ticker);
-        setLookup({ status: 'found', data });
-      } catch (err: unknown) {
-        const isNotFound =
-          err instanceof Error && err.message.toLowerCase().includes('404');
-        setLookup(isNotFound ? { status: 'notFound' } : { status: 'error' });
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
       }
-    }, DEBOUNCE_MS);
+    }
+    if (showDropdown) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showDropdown]);
 
-    return () => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [form.ticker, isEdit]);
+  const filteredSecurities =
+    tickerInput.trim().length === 0
+      ? []
+      : securities.filter(
+          (s) =>
+            s.ticker.toLowerCase().startsWith(tickerInput.toLowerCase()) ||
+            s.name.toLowerCase().includes(tickerInput.toLowerCase()),
+        ).slice(0, 10);
+
+  const isNewTicker =
+    !isEdit &&
+    tickerInput.trim().length > 0 &&
+    matchedSecurity === null &&
+    !securitiesLoading;
+
+  function handleTickerChange(value: string) {
+    const upper = value.toUpperCase();
+    setTickerInput(upper);
+    setForm((prev) => ({ ...prev, ticker: upper }));
+    setMatchedSecurity(null);
+    setShowDropdown(true);
+  }
+
+  function handleSelectSecurity(sec: SecurityRead) {
+    setTickerInput(sec.ticker);
+    setForm((prev) => ({
+      ...prev,
+      ticker: sec.ticker,
+      name: '',
+      sector: '',
+      asset_class: '',
+      currency: '',
+      exchange: '',
+    }));
+    setMatchedSecurity(sec);
+    setShowDropdown(false);
+  }
 
   function setField<K extends keyof FormState>(key: K, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -103,21 +150,30 @@ export function HoldingFormModal({ open, onClose, portfolioId, initial }: Props)
 
     let result;
     if (isEdit && initial) {
-      // For update, derive security_id from the holding. HoldingItem doesn't expose it
-      // so we pass 0 and the backend should route by ticker within the portfolio.
-      // Agent B: please confirm the securityId param for PUT /portfolios/:id/holdings/:securityId
       result = await dispatch(
         updateHolding({
           portfolioId,
-          securityId: (initial as HoldingItem & { security_id?: number }).security_id ?? 0,
+          securityId: initial.security_id ?? 0,
           body: { ticker, quantity, cost_basis, target_weight },
         }),
       );
     } else {
+      // Include metadata only for new tickers
+      const metaFields =
+        matchedSecurity === null
+          ? {
+              name: form.name || undefined,
+              sector: form.sector || undefined,
+              asset_class: form.asset_class || undefined,
+              currency: form.currency || undefined,
+              exchange: form.exchange || undefined,
+            }
+          : {};
+
       result = await dispatch(
         addHolding({
           portfolioId,
-          body: { ticker, quantity, cost_basis, target_weight },
+          body: { ticker, quantity, cost_basis, target_weight, ...metaFields },
         }),
       );
     }
@@ -135,56 +191,140 @@ export function HoldingFormModal({ open, onClose, portfolioId, initial }: Props)
       widthClass="max-w-md"
     >
       <form onSubmit={handleSubmit} noValidate className="space-y-4">
-        {/* Ticker */}
+        {/* Ticker autocomplete */}
         <div className="space-y-1">
           <label className="block text-xs font-semibold text-clay-muted uppercase tracking-wide">
             <Term termKey="ticker">Ticker</Term>
           </label>
-          <input
-            type="text"
-            className="clay-input w-full font-mono uppercase"
-            value={form.ticker}
-            onChange={(e) => setField('ticker', e.target.value.toUpperCase())}
-            placeholder="e.g. AAPL"
-            disabled={isEdit}
-            autoFocus
-            maxLength={10}
-          />
 
-          {/* Ticker lookup preview */}
-          {!isEdit && lookup.status === 'loading' && (
-            <div className="clay-card-lifted p-3 mt-1">
-              <div className="flex items-center gap-2 text-xs text-clay-muted">
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-clay-primary animate-bounce [animation-delay:0ms]" />
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-clay-primary animate-bounce [animation-delay:150ms]" />
-                <span className="inline-block h-1.5 w-1.5 rounded-full bg-clay-primary animate-bounce [animation-delay:300ms]" />
-                <span className="ml-1">Looking up ticker...</span>
+          <div className="relative" ref={dropdownRef}>
+            <input
+              type="text"
+              className="clay-input w-full font-mono uppercase"
+              value={tickerInput}
+              onChange={(e) => handleTickerChange(e.target.value)}
+              onFocus={() => tickerInput.trim().length > 0 && setShowDropdown(true)}
+              placeholder="e.g. AAPL"
+              disabled={isEdit}
+              autoFocus
+              maxLength={10}
+              autoComplete="off"
+            />
+
+            {/* Dropdown */}
+            {showDropdown && filteredSecurities.length > 0 && (
+              <div className="absolute z-50 mt-1 w-full clay-card shadow-clay-lg overflow-hidden max-h-52 overflow-y-auto">
+                {filteredSecurities.map((sec) => (
+                  <button
+                    key={sec.id}
+                    type="button"
+                    className="w-full text-left px-3 py-2 hover:bg-clay-bg/60 transition-colors flex items-center justify-between gap-2"
+                    onMouseDown={(e) => e.preventDefault()} // keep focus on input
+                    onClick={() => handleSelectSecurity(sec)}
+                  >
+                    <span className="font-mono text-xs font-semibold text-clay-ink">{sec.ticker}</span>
+                    <span className="text-xs text-clay-muted truncate">{sec.name}</span>
+                    <span className="clay-pill shrink-0 text-[10px]">{sec.sector}</span>
+                  </button>
+                ))}
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
-          {!isEdit && lookup.status === 'found' && (
+          {/* Matched preset preview */}
+          {!isEdit && matchedSecurity && (
             <div className="clay-card-lifted p-3 mt-1 space-y-0.5">
-              <p className="text-sm font-semibold text-clay-ink">{lookup.data.name}</p>
+              <p className="text-sm font-semibold text-clay-ink">{matchedSecurity.name}</p>
               <div className="flex flex-wrap gap-1.5 mt-1">
-                <span className="clay-pill">{lookup.data.sector}</span>
-                <span className="clay-pill-sky">{lookup.data.asset_class}</span>
-                <span className="clay-pill-mint">{lookup.data.exchange}</span>
-                <span className="clay-pill-honey">{lookup.data.currency}</span>
+                <span className="clay-pill">{matchedSecurity.sector}</span>
+                <span className="clay-pill-sky">{matchedSecurity.asset_class}</span>
+                {matchedSecurity.exchange && (
+                  <span className="clay-pill-mint">{matchedSecurity.exchange}</span>
+                )}
+                <span className="clay-pill-honey">{matchedSecurity.currency}</span>
               </div>
             </div>
           )}
 
-          {!isEdit && lookup.status === 'notFound' && (
-            <p className="text-xs text-clay-coral mt-1">Ticker not found.</p>
-          )}
-
-          {!isEdit && lookup.status === 'error' && (
-            <p className="text-xs text-clay-coral mt-1">
-              Could not look up ticker — you can still continue.
+          {/* New ticker hint */}
+          {isNewTicker && (
+            <p className="text-xs text-clay-honey mt-1">
+              New ticker — please fill in details below.
             </p>
           )}
         </div>
+
+        {/* Metadata fields for new tickers */}
+        {isNewTicker && (
+          <div className="clay-card-lifted p-3 space-y-3">
+            <p className="text-xs font-semibold text-clay-muted uppercase tracking-wide">Security Details</p>
+
+            <div className="space-y-1">
+              <label className="block text-xs text-clay-muted">Name *</label>
+              <input
+                type="text"
+                className="clay-input w-full"
+                value={form.name}
+                onChange={(e) => setField('name', e.target.value)}
+                placeholder="e.g. Apple Inc."
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="block text-xs text-clay-muted">Sector *</label>
+                <input
+                  type="text"
+                  className="clay-input w-full"
+                  value={form.sector}
+                  onChange={(e) => setField('sector', e.target.value)}
+                  placeholder="e.g. Technology"
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-xs text-clay-muted">Asset Class *</label>
+                <input
+                  type="text"
+                  className="clay-input w-full"
+                  value={form.asset_class}
+                  onChange={(e) => setField('asset_class', e.target.value)}
+                  placeholder="e.g. Equity"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <label className="block text-xs text-clay-muted">Currency *</label>
+                <input
+                  type="text"
+                  className="clay-input w-full font-mono uppercase"
+                  value={form.currency}
+                  onChange={(e) => setField('currency', e.target.value.toUpperCase())}
+                  placeholder="e.g. USD"
+                  maxLength={10}
+                  required
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-xs text-clay-muted">Exchange</label>
+                <input
+                  type="text"
+                  className="clay-input w-full font-mono uppercase"
+                  value={form.exchange}
+                  onChange={(e) => setField('exchange', e.target.value.toUpperCase())}
+                  placeholder="e.g. NASDAQ"
+                  maxLength={20}
+                />
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Quantity */}
         <div className="space-y-1">

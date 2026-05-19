@@ -5,7 +5,7 @@ from sqlalchemy import func, desc, delete
 
 from app.models import (
     Portfolio, Benchmark, Security, Holding,
-    PortfolioReturn, BenchmarkReturn, Price,
+    PortfolioReturn, BenchmarkReturn, Price, Transaction,
 )
 from app.schemas.schemas import (
     PortfolioBase, PortfolioSummary, HoldingItem, HoldingsResponse,
@@ -709,6 +709,7 @@ def delete_portfolio(db: Session, portfolio_id: int) -> None:
     if not portfolio:
         raise ValueError(f"Portfolio {portfolio_id} not found")
     # Delete dependent rows manually (no cascade set on model)
+    db.execute(delete(Transaction).where(Transaction.portfolio_id == portfolio_id))
     db.execute(delete(Holding).where(Holding.portfolio_id == portfolio_id))
     db.execute(delete(PortfolioReturn).where(PortfolioReturn.portfolio_id == portfolio_id))
     db.delete(portfolio)

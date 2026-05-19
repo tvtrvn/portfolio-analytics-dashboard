@@ -21,7 +21,7 @@ const filterSlice = createSlice({
   name: 'filters',
   initialState,
   reducers: {
-    setSelectedPortfolio(state, action: PayloadAction<number>) {
+    setSelectedPortfolio(state, action: PayloadAction<number | null>) {
       state.selectedPortfolioId = action.payload;
     },
     setPeriod(state, action: PayloadAction<TimePeriod>) {

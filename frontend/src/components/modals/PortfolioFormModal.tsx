@@ -39,7 +39,7 @@ function portfolioToForm(p: Portfolio): PortfolioCreate {
   return {
     name: p.name,
     strategy: p.strategy,
-    benchmark_id: undefined, // benchmark_id not exposed on Portfolio — leave as optional
+    benchmark_id: p.benchmark_id ?? undefined,
     inception_date: p.inception_date,
     currency: p.currency,
     description: p.description ?? '',

@@ -14,6 +14,7 @@ import type {
   HoldingCreate,
   HoldingUpdate,
   SecurityMetadata,
+  SecurityRead,
   Holding,
 } from '../types';
 
@@ -66,8 +67,11 @@ export const portfolioApi = {
     api.delete(`/portfolios/${id}`),
 
   // Securities
+  listSecurities: () =>
+    api.get<SecurityRead[]>('/securities'),
+
   lookupTicker: (ticker: string) =>
-    api.get<SecurityMetadata>('/securities/lookup', { ticker }),
+    api.get<SecurityRead>('/securities/lookup', { ticker }),
 
   // Holdings CRUD
   addHolding: (portfolioId: number, body: HoldingCreate) =>

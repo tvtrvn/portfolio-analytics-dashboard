@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Search, Download, Plus, Pencil, Trash2 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../store/store';
-import { fetchHoldings, deleteHolding } from '../store/slices/holdingsSlice';
+import { fetchHoldings, deleteHolding, clearHoldingsMutateError } from '../store/slices/holdingsSlice';
 import { DataTable, type Column } from '../components/common/DataTable';
 import { LoadingSpinner } from '../components/common/LoadingSpinner';
 import { ErrorState } from '../components/common/ErrorState';
@@ -9,13 +9,14 @@ import { EmptyState } from '../components/common/EmptyState';
 import { Term } from '../components/common/Term';
 import { HoldingFormModal } from '../components/modals/HoldingFormModal';
 import { ConfirmDialog } from '../components/modals/ConfirmDialog';
+import { Toast } from '../components/common/Toast';
 import { formatCurrency, formatPercent, formatCurrencyCompact } from '../utils/format';
 import { downloadCsv } from '../utils/csv';
 import type { HoldingItem } from '../types';
 
 export function Holdings() {
   const dispatch = useAppDispatch();
-  const { data, loading, error } = useAppSelector((s) => s.holdings);
+  const { data, loading, error, mutateError } = useAppSelector((s) => s.holdings);
   const { selectedPortfolioId } = useAppSelector((s) => s.filters);
 
   const [search, setSearch] = useState('');
@@ -46,7 +47,7 @@ export function Holdings() {
 
   function handleDeleteConfirm() {
     if (!deleteTarget || !selectedPortfolioId) return;
-    const securityId = (deleteTarget as HoldingItem & { security_id?: number }).security_id ?? 0;
+    const securityId = deleteTarget.security_id ?? 0;
     dispatch(deleteHolding({ portfolioId: selectedPortfolioId, securityId }));
     setDeleteTarget(null);
   }
@@ -186,6 +187,13 @@ export function Holdings() {
 
   return (
     <div className="space-y-6">
+      {mutateError && (
+        <Toast
+          message={mutateError}
+          kind="error"
+          onDismiss={() => dispatch(clearHoldingsMutateError())}
+        />
+      )}
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>

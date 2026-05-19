@@ -1,16 +1,17 @@
 import { useEffect, useState } from 'react';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
 import { useAppDispatch, useAppSelector } from '../../store/store';
-import { fetchPortfolios, deletePortfolio } from '../../store/slices/portfolioSlice';
+import { fetchPortfolios, deletePortfolio, clearMutateError } from '../../store/slices/portfolioSlice';
 import { setSelectedPortfolio, setPeriod } from '../../store/slices/filterSlice';
 import { PeriodSelector } from '../common/PeriodSelector';
 import { PortfolioFormModal } from '../modals/PortfolioFormModal';
 import { ConfirmDialog } from '../modals/ConfirmDialog';
+import { Toast } from '../common/Toast';
 import type { TimePeriod } from '../../types';
 
 export function Header() {
   const dispatch = useAppDispatch();
-  const { list, listLoading } = useAppSelector((s) => s.portfolio);
+  const { list, listLoading, mutateError } = useAppSelector((s) => s.portfolio);
   const { selectedPortfolioId, period } = useAppSelector((s) => s.filters);
 
   const [newPortfolioOpen, setNewPortfolioOpen] = useState(false);
@@ -29,14 +30,35 @@ export function Header() {
 
   const selected = list.find((p) => p.id === selectedPortfolioId);
 
-  function handleDeleteConfirm() {
+  async function handleDeleteConfirm() {
     if (!selectedPortfolioId) return;
-    dispatch(deletePortfolio(selectedPortfolioId));
+    try {
+      await dispatch(deletePortfolio(selectedPortfolioId)).unwrap();
+      // After successful delete, select the first remaining portfolio or clear
+      // fetchPortfolios is called inside the thunk; wait for the list to update
+      dispatch(fetchPortfolios()).then((action) => {
+        const updatedList = (action.payload as typeof list) ?? [];
+        if (updatedList.length > 0) {
+          dispatch(setSelectedPortfolio(updatedList[0].id));
+        } else {
+          dispatch(setSelectedPortfolio(null));
+        }
+      });
+    } catch {
+      // mutateError is set in the slice; the Toast will display it
+    }
     setDeletePortfolioOpen(false);
   }
 
   return (
     <>
+      {mutateError && (
+        <Toast
+          message={mutateError}
+          kind="error"
+          onDismiss={() => dispatch(clearMutateError())}
+        />
+      )}
       <header className="sticky top-0 z-20 clay-card rounded-none px-6 py-3 flex items-center justify-between shadow-clay-sm">
         <div className="flex items-center gap-2">
           {/* Portfolio switcher */}

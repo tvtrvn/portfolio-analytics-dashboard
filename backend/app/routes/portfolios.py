@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models import Security
 from app.schemas.schemas import (
     PortfolioBase, PortfolioSummary, HoldingsResponse,
     PerformanceResponse, SectorAllocationResponse, AssetAllocationResponse,
@@ -66,13 +67,41 @@ def delete_portfolio(portfolio_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{portfolio_id}/holdings", response_model=HoldingRead, status_code=201)
 def add_holding(portfolio_id: int, payload: HoldingCreate, db: Session = Depends(get_db)):
+    ticker_upper = payload.ticker.strip().upper()
+    existing_sec = db.query(Security).filter(Security.ticker.ilike(ticker_upper)).first()
+
+    if existing_sec is None:
+        # Ticker not in preset list — require full metadata from the caller
+        required = {"name": payload.name, "sector": payload.sector, "asset_class": payload.asset_class, "currency": payload.currency}
+        missing = [field for field, val in required.items() if not val]
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Ticker '{ticker_upper}' is not in the preset list. "
+                    f"Please provide the following fields: {', '.join(missing)}."
+                ),
+            )
+        # Create the Security now so add_holding finds it
+        new_sec = Security(
+            ticker=ticker_upper,
+            name=payload.name,
+            sector=payload.sector,
+            asset_class=payload.asset_class,
+            currency=payload.currency or "USD",
+            exchange=payload.exchange,
+        )
+        db.add(new_sec)
+        db.commit()
+        db.refresh(new_sec)
+
     try:
         return portfolio_service.add_holding(
             db,
             portfolio_id,
             payload,
             fetch_latest_close_fn=_fetch_latest_close,
-            lookup_fn=_lookup_ticker,
+            lookup_fn=None,   # do not call yfinance — security is already in DB
             refresh_fn=_refresh_fn,
         )
     except ValueError as e:

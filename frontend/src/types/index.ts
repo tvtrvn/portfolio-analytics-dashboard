@@ -6,9 +6,11 @@ export interface Portfolio {
   inception_date: string;
   description: string | null;
   benchmark_name: string | null;
+  benchmark_id?: number | null;
 }
 
 export interface HoldingItem {
+  security_id?: number;
   ticker: string;
   name: string;
   sector: string;
@@ -186,6 +188,12 @@ export interface HoldingCreate {
   quantity: number;
   cost_basis?: number;
   target_weight?: number;
+  // Optional metadata for new tickers not in the preset list
+  name?: string;
+  sector?: string;
+  asset_class?: string;
+  currency?: string;
+  exchange?: string;
 }
 
 export type HoldingUpdate = Partial<HoldingCreate>;
@@ -197,6 +205,16 @@ export interface SecurityMetadata {
   asset_class: string;
   currency: string;
   exchange: string;
+}
+
+export interface SecurityRead {
+  id: number;
+  ticker: string;
+  name: string;
+  sector: string;
+  asset_class: string;
+  currency: string;
+  exchange: string | null;
 }
 
 // Holding as returned by the mutation endpoints (minimal shape used by thunks)

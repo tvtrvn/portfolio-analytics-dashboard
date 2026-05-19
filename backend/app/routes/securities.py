@@ -37,24 +37,19 @@ def list_securities(
     return query.order_by(Security.ticker).all()
 
 
-@router.get("/lookup", response_model=SecurityMetadata)
+@router.get("/lookup", response_model=SecurityRead)
 def lookup_security(
     ticker: str = Query(...),
     db: Session = Depends(get_db),
 ):
-    if _lookup_ticker is None:
-        raise HTTPException(status_code=503, detail="market_data service unavailable")
-    meta = _lookup_ticker(ticker.upper())
-    if not meta:
-        raise HTTPException(status_code=404, detail=f"Ticker '{ticker}' not found")
-    return SecurityMetadata(
-        ticker=meta.get("ticker", ticker.upper()),
-        name=meta.get("name"),
-        sector=meta.get("sector"),
-        asset_class=meta.get("asset_class"),
-        currency=meta.get("currency"),
-        exchange=meta.get("exchange"),
-    )
+    """DB-only lookup — returns a Security if it is in the preset list, 404 otherwise."""
+    sec = db.query(Security).filter(Security.ticker.ilike(ticker.strip())).first()
+    if not sec:
+        raise HTTPException(
+            status_code=404,
+            detail="Ticker not in preset list. Add metadata manually.",
+        )
+    return sec
 
 
 @router.post("", response_model=SecurityRead, status_code=201)
