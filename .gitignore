@@ -34,6 +34,8 @@ resume.md
 # Claude Code machine-local permissions (project skills under .claude/skills/ are committed)
 .claude/settings.local.json
 .claude/hooks/
+# Exception: gitnexus skill bundle is tool-generated (re-created by `gitnexus analyze`), keep out of git
+.claude/skills/gitnexus/
 
 # Refresh-job runtime marker
 backend/.last_refresh
