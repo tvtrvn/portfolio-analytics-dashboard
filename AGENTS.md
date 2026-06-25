@@ -42,6 +42,13 @@ This project is indexed by GitNexus as **portfolio-analytics-dashboard** (1423 s
 
 <!-- gitnexus:end -->
 
+## Project rules
+
+- **Purpose:** Full-stack institutional portfolio analytics dashboard (performance, risk, attribution) over live Yahoo Finance EOD data.
+- **Layout:** `backend/` (Python) · `frontend/` (TS/React) · `docs/` (project docs)
+- **Build / test:** `cd backend && uvicorn app.main:app --reload --port 8000` (after `pip install -r requirements.txt`, `python seed.py`) ; `cd frontend && npm run dev` / `npm run build` / `npm run preview`
+- **Do / don't:** Don't commit `.env` or seeded DB state; never hardcode `REFRESH_TOKEN`/`DATABASE_URL`. Global coding standards live in `~/.claude/CLAUDE.md`.
+
 <!-- skills:start -->
 ## Available Skills
 

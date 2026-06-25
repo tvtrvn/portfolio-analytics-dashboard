@@ -10,11 +10,14 @@ venv/
 # Node
 node_modules/
 dist/
+build/
+.next/
 
 # Environment variables
 .env
 .env.local
 .env.*.local
+.env.*
 
 # OS
 .DS_Store
