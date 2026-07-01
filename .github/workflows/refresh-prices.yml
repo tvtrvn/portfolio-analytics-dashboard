@@ -22,6 +22,19 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
+      - name: Warm up backend (Koyeb free-tier cold start)
+        run: |
+          # Free-tier instance scales to zero; first hit often 503s while it wakes.
+          # Poll health until it answers 200 before firing the real request.
+          for i in $(seq 1 10); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" -m 30 \
+              "${{ secrets.BACKEND_URL }}/api/health" || echo 000)
+            echo "health attempt $i -> $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 15
+          done
+          echo "backend did not become healthy within ~2.5m"; exit 1
+
       - name: Trigger backend refresh
         run: |
           curl -sS -X POST "${{ secrets.BACKEND_URL }}/api/admin/refresh-prices" \
@@ -30,4 +43,5 @@ jobs:
             -d '{}' \
             --connect-timeout 60 \
             --max-time 300 \
+            --retry 3 --retry-delay 10 --retry-all-errors \
             --fail-with-body -w "\nHTTP %{http_code}\n"
