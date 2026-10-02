@@ -362,7 +362,7 @@ Represents a single tradable instrument.
 | `currency` | String(10) | Pricing currency |
 | `exchange` | String(50) | Exchange code, e.g. "TSX", "NASDAQ" |
 
-34 securities are seeded across Canadian equities, US equities, fixed income ETFs, and alternatives.
+32 securities are seeded across Canadian equities, US equities, fixed income ETFs, and alternatives.
 
 #### `Holding`
 
@@ -635,7 +635,7 @@ The seed script creates all tables from scratch (dropping any existing tables fi
 
 **Benchmark returns**: For each benchmark, daily returns are drawn from a normal distribution parameterized by target annual return and volatility. For example, the S&P 500 benchmark uses a 10% annual return and 16% annual volatility. Returns are converted to daily scale using `annual / 252` for drift and `annual / sqrt(252)` for volatility.
 
-**Securities**: 34 securities across four categories:
+**Securities**: 32 securities across four categories:
 - 18 Canadian Equities (TSX-listed: RY.TO, TD.TO, ENB.TO, CNR.TO, SHOP.TO, BMO.TO, BNS.TO, SU.TO, TRP.TO, BCE.TO, T.TO, ABX.TO, FTS.TO, MFC.TO, NTR.TO, CSU.TO, GIB-A.TO, RCI-B.TO)
 - 8 US Equities (AAPL, MSFT, AMZN, JNJ, JPM, PG, UNH, XOM)
 - 4 Fixed Income ETFs (XBB.TO, ZAG.TO, XCB.TO, CLF.TO)

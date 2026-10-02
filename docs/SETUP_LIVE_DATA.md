@@ -76,10 +76,10 @@ curl -sS -X POST "https://your-app.koyeb.app/api/admin/refresh-prices" \
 
 You'll get a JSON response like:
 ```json
-{"updated_securities": 34, "updated_returns_through": "2026-05-17", "skipped": [], "errors": []}
+{"updated_securities": 32, "updated_returns_through": "2026-05-17", "skipped": [], "errors": []}
 ```
 
-First run can take 30–60 seconds (it pulls ~250 trading days × 34 tickers from Yahoo). Subsequent daily runs only fetch the new day, so they finish in a few seconds.
+First run can take 30–60 seconds (it pulls ~250 trading days × 32 tickers from Yahoo). Subsequent daily runs only fetch the new day, so they finish in a few seconds.
 
 ---
 

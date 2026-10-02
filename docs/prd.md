@@ -179,9 +179,9 @@ Both workflows require two GitHub repository secrets: `BACKEND_URL` and `REFRESH
 ### Seed Data
 
 - 4 portfolios ($100M–$250M AUM) across four strategies.
-- 34 securities: 18 Canadian equities, 8 US equities, 4 fixed income ETFs, 2 alternatives.
+- 32 securities: 18 Canadian equities, 8 US equities, 4 fixed income ETFs, 2 alternatives.
 - 4 benchmark indices: S&P/TSX Composite, S&P 500, FTSE Canada Bond, MSCI World.
-- ~850+ trading days of simulated price data using geometric Brownian motion.
+- Daily simulated price data from 2023-01-03 to the seed date, using geometric Brownian motion.
 - Holdings snapshots on every Friday and month-end.
 - 50 sample transactions per portfolio.
 

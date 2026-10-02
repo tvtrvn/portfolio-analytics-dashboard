@@ -14,7 +14,7 @@ The core tables in backend/app/models/models.py:
 — Reference indices like S&P 500 or S&P/TSX Composite. Portfolios link to benchmarks via benchmark_id so you can do relative performance analysis.
 
 #### securities
-— The universe of investable assets (34 total: Canadian equities, US equities, bond ETFs, alternatives). Each has a ticker, sector, asset class, currency, and exchange.
+— The universe of investable assets (32 total: Canadian equities, US equities, bond ETFs, alternatives). Each has a ticker, sector, asset class, currency, and exchange.
 
 #### holdings
 — Point-in-time snapshots of what each portfolio owns on a given date. This is a many-to-many between portfolios and securities, with a date dimension. Stores quantity, market value, weight, target weight, and cost basis.
@@ -39,7 +39,7 @@ The core tables in backend/app/models/models.py:
 "Relationships use lazy='dynamic' on the Portfolio model, which means accessing portfolio.holdings returns a query object rather than eagerly loading thousands of rows. This prevents the N+1 problem and lets the service layer apply filters before execution."
 
 ### Seed Script
-"The seed script (seed.py) generates realistic institutional-grade sample data using geometric Brownian motion for price simulation -- the same stochastic model used in quantitative finance (it's the foundation of Black-Scholes). It creates ~850 trading days of prices, computes portfolio returns as the weighted sum of individual security returns, applies random weight drift every 20 days to simulate real portfolio drift, and generates holding snapshots on Fridays and month-ends."
+"The seed script (seed.py) generates realistic institutional-grade sample data using geometric Brownian motion for price simulation -- the same stochastic model used in quantitative finance (it's the foundation of Black-Scholes). It creates daily prices from 2023-01-03 to the day it runs, computes portfolio returns as the weighted sum of individual security returns, applies random weight drift every 20 days to simulate real portfolio drift, and generates holding snapshots on Fridays and month-ends."
 
 ## 2. Backend API — FastAPI + Service Layer
 ### Architecture
